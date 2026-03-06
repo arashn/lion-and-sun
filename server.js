@@ -3,6 +3,7 @@ const path = require('path');
 
 const dotenv = require('dotenv');
 const express = require('express');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 const { Pool } = require('pg');
 const Stripe = require('stripe');
 const twilio = require('twilio');
@@ -72,8 +73,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 function normalizePhone(rawPhone) {
   const phone = String(rawPhone || '').trim();
-  const isValid = /^\+[1-9]\d{7,14}$/.test(phone);
-  return isValid ? phone : null;
+  const parsed = parsePhoneNumberFromString(phone, 'US');
+  if (!parsed || !parsed.isValid() || parsed.country !== 'US') {
+    return null;
+  }
+  return parsed.number;
 }
 
 function createSignedToken(payload) {

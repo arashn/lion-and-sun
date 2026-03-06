@@ -13,8 +13,8 @@
 
       <section id="auth-card" class="card-block">
         <h2>Login</h2>
-        <label for="phone">Phone (E.164)</label>
-        <input id="phone" type="tel" placeholder="+14155550123" autocomplete="tel" />
+        <label for="phone">Phone (US)</label>
+        <input id="phone" type="tel" placeholder="(415) 555-0123" autocomplete="tel-national" />
         <button id="request-code" class="secondary">Send Login Code</button>
 
         <div id="code-section" class="hidden">
@@ -42,6 +42,7 @@
       <p id="status" class="status"></p>
     </main>
 
+    <script src="https://unpkg.com/libphonenumber-js@1.11.18/bundle/libphonenumber-js.min.js"></script>
     <script src="/config.js"></script>
     <script>
       const statusEl = document.getElementById('status');
@@ -62,6 +63,96 @@
 
       offerTextEl.textContent = `${window.APP_CONFIG.offerText}. Access duration: ${window.APP_CONFIG.streamAccessHours} hours.`;
       codeEl.maxLength = window.APP_CONFIG.loginCodeLength;
+
+      function digitsBeforeCaret(value, caret) {
+        return (value.slice(0, caret).match(/\d/g) || []).length;
+      }
+
+      function caretFromDigitIndex(formatted, digitIndex) {
+        if (digitIndex <= 0) {
+          return 0;
+        }
+        let count = 0;
+        for (let i = 0; i < formatted.length; i += 1) {
+          if (/\d/.test(formatted[i])) {
+            count += 1;
+            if (count === digitIndex) {
+              return i + 1;
+            }
+          }
+        }
+        return formatted.length;
+      }
+
+      function formatDigits(digits) {
+        const formatter = new libphonenumber.AsYouType('US');
+        return formatter.input(digits);
+      }
+
+      function applyPhoneDigits(nextDigits, caretDigitIndex) {
+        const limitedDigits = nextDigits.slice(0, 10);
+        const formatted = formatDigits(limitedDigits);
+        phoneEl.value = formatted;
+        phoneEl.dataset.digits = limitedDigits;
+        const caret = caretFromDigitIndex(formatted, Math.min(caretDigitIndex, limitedDigits.length));
+        phoneEl.setSelectionRange(caret, caret);
+      }
+
+      phoneEl.dataset.digits = '';
+
+      phoneEl.addEventListener('keydown', (event) => {
+        if (event.key !== 'Backspace' && event.key !== 'Delete') {
+          return;
+        }
+
+        const digits = phoneEl.dataset.digits || '';
+        const start = phoneEl.selectionStart || 0;
+        const end = phoneEl.selectionEnd || 0;
+        const startDigit = digitsBeforeCaret(phoneEl.value, start);
+        const endDigit = digitsBeforeCaret(phoneEl.value, end);
+        let nextDigits = digits;
+        let nextCaretDigit = startDigit;
+
+        if (startDigit !== endDigit) {
+          nextDigits = digits.slice(0, startDigit) + digits.slice(endDigit);
+          nextCaretDigit = startDigit;
+        } else if (event.key === 'Backspace') {
+          if ((event.ctrlKey || event.metaKey) && startDigit > 0) {
+            nextDigits = digits.slice(startDigit);
+            nextCaretDigit = 0;
+          } else if (startDigit > 0) {
+            nextDigits = digits.slice(0, startDigit - 1) + digits.slice(startDigit);
+            nextCaretDigit = startDigit - 1;
+          }
+        } else if (event.key === 'Delete') {
+          if (event.ctrlKey || event.metaKey) {
+            nextDigits = digits.slice(0, startDigit);
+            nextCaretDigit = startDigit;
+          } else if (startDigit < digits.length) {
+            nextDigits = digits.slice(0, startDigit) + digits.slice(startDigit + 1);
+            nextCaretDigit = startDigit;
+          }
+        }
+
+        event.preventDefault();
+        applyPhoneDigits(nextDigits, nextCaretDigit);
+      });
+
+      phoneEl.addEventListener('input', () => {
+        const rawValue = phoneEl.value;
+        const rawCaret = phoneEl.selectionStart || rawValue.length;
+        const nextDigits = rawValue.replace(/\D/g, '').slice(0, 10);
+        const caretDigitIndex = digitsBeforeCaret(rawValue, rawCaret);
+        applyPhoneDigits(nextDigits, caretDigitIndex);
+      });
+
+      function getPhoneE164OrNull() {
+        const parsed = libphonenumber.parsePhoneNumberFromString(phoneEl.value, 'US');
+        if (!parsed || !parsed.isValid() || parsed.country !== 'US') {
+          return null;
+        }
+        return parsed.number;
+      }
 
       function setStatus(message) {
         statusEl.textContent = message;
@@ -99,9 +190,9 @@
       }
 
       requestCodeEl.addEventListener('click', async () => {
-        const phone = phoneEl.value.trim();
+        const phone = getPhoneE164OrNull();
         if (!phone) {
-          setStatus('Enter your phone first (example: +14155550123).');
+          setStatus('Enter a valid US phone number.');
           return;
         }
 
@@ -128,7 +219,7 @@
       });
 
       verifyCodeEl.addEventListener('click', async () => {
-        const phone = phoneEl.value.trim();
+        const phone = getPhoneE164OrNull();
         const code = codeEl.value.trim();
         if (!phone || !code) {
           setStatus('Enter both phone and code.');

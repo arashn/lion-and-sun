@@ -36,7 +36,7 @@ Access flow:
 In Twilio Console:
 - Create a Verify Service.
 - Enable SMS channel.
-- Use E.164 phone format in the app (example: `+14155550123`).
+- The app formats US numbers as-you-type and submits E.164 automatically.
 
 ## Database
 

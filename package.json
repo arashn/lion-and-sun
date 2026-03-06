@@ -10,6 +10,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "libphonenumber-js": "^1.11.18",
     "pg": "^8.13.1",
     "stripe": "^18.0.0",
     "twilio": "^5.4.0"
