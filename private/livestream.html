@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Livestream</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Livestream</h1>
+      <p>You have active access. Enjoy the show.</p>
+      <div class="video-wrapper">
+        <iframe
+          id="stream-frame"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen
+          referrerpolicy="strict-origin-when-cross-origin"
+          title="YouTube livestream"
+        ></iframe>
+      </div>
+    </main>
+
+    <script src="/config.js"></script>
+    <script>
+      const streamFrame = document.getElementById('stream-frame');
+      const streamId = window.APP_CONFIG.youtubeLivestreamId;
+      streamFrame.src = `https://www.youtube.com/embed/${streamId}`;
+    </script>
+  </body>
+</html>
