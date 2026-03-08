@@ -1,8 +1,13 @@
 CREATE TABLE IF NOT EXISTS twilio_users (
   id BIGSERIAL PRIMARY KEY,
   phone TEXT NOT NULL UNIQUE,
+  stripe_customer_id TEXT UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_twilio_users_stripe_customer
+ON twilio_users(stripe_customer_id)
+WHERE stripe_customer_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS twilio_purchases (
   id BIGSERIAL PRIMARY KEY,

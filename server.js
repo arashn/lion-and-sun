@@ -225,8 +225,20 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS twilio_users (
       id BIGSERIAL PRIMARY KEY,
       phone TEXT NOT NULL UNIQUE,
+      stripe_customer_id TEXT UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE twilio_users
+    ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_twilio_users_stripe_customer
+    ON twilio_users(stripe_customer_id)
+    WHERE stripe_customer_id IS NOT NULL;
   `);
 
   await pool.query(`
@@ -267,6 +279,46 @@ async function initStripeOfferText() {
   }
 
   stripeOfferText = productName;
+}
+
+async function getOrCreateStripeCustomerId(userId, phone) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      'SELECT stripe_customer_id FROM twilio_users WHERE id = $1 FOR UPDATE',
+      [userId]
+    );
+
+    if (userResult.rowCount === 0) {
+      throw new Error('User not found');
+    }
+
+    const existingCustomerId = userResult.rows[0].stripe_customer_id;
+    if (existingCustomerId) {
+      await client.query('COMMIT');
+      return existingCustomerId;
+    }
+
+    const customer = await stripe.customers.create({
+      phone,
+      metadata: {
+        userId: String(userId),
+      },
+    });
+
+    await client.query('UPDATE twilio_users SET stripe_customer_id = $1 WHERE id = $2', [
+      customer.id,
+      userId,
+    ]);
+    await client.query('COMMIT');
+    return customer.id;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 app.get('/auth/me', async (req, res) => {
@@ -358,8 +410,11 @@ app.post('/auth/logout', (_req, res) => {
 
 app.post('/create-checkout-session', requireAuth, async (req, res) => {
   try {
+    const customerId = await getOrCreateStripeCustomerId(req.user.id, req.user.phone);
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      customer: customerId,
       line_items: [
         {
           price: STRIPE_PRICE_ID,
