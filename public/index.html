@@ -3,287 +3,146 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Livestream Access</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>Widget Demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg-1: #fff9f0;
+        --bg-2: #e9f3ff;
+        --ink: #13233a;
+        --muted: #506681;
+        --panel: rgba(255, 255, 255, 0.82);
+        font-family: Georgia, "Times New Roman", serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, var(--bg-1), transparent 36%),
+          radial-gradient(circle at bottom right, var(--bg-2), transparent 38%),
+          linear-gradient(180deg, #f6f8fc 0%, #edf3fb 100%);
+      }
+
+      .shell {
+        width: min(1120px, 92vw);
+        margin: 0 auto;
+        padding: 3rem 0 4rem;
+      }
+
+      .hero {
+        display: grid;
+        gap: 1.6rem;
+        align-items: start;
+      }
+
+      .copy {
+        max-width: 680px;
+      }
+
+      .eyebrow {
+        margin: 0 0 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+
+      h1 {
+        margin: 0 0 0.8rem;
+        font-size: clamp(2.4rem, 5vw, 4.6rem);
+        line-height: 0.95;
+      }
+
+      .lead {
+        margin: 0;
+        max-width: 52ch;
+        color: var(--muted);
+        font-size: 1.05rem;
+        line-height: 1.6;
+      }
+
+      .stage {
+        margin-top: 2rem;
+        background: var(--panel);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(123, 149, 181, 0.28);
+        border-radius: 26px;
+        padding: 1.25rem;
+        box-shadow: 0 24px 70px rgba(19, 35, 58, 0.08);
+      }
+
+      .stage-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+      }
+
+      .stage-title {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+
+      .stage-note {
+        margin: 0.35rem 0 0;
+        color: var(--muted);
+      }
+
+      .badge {
+        align-self: start;
+        border-radius: 999px;
+        padding: 0.5rem 0.8rem;
+        background: #13233a;
+        color: #fff;
+        font-size: 0.84rem;
+      }
+
+      #widget-demo {
+        min-height: 600px;
+      }
+
+      @media (max-width: 720px) {
+        .shell {
+          padding-top: 2rem;
+        }
+        .stage {
+          padding: 0.8rem;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main class="container">
-      <h1>Private Livestream</h1>
-      <p id="offer-text"></p>
-
-      <section id="auth-card" class="card-block">
-        <h2>Login</h2>
-        <label for="phone">Phone (US)</label>
-        <input id="phone" type="tel" placeholder="(415) 555-0123" autocomplete="tel-national" />
-        <button id="request-code" class="secondary">Send Login Code</button>
-
-        <div id="code-section" class="hidden">
-          <label for="code">Login Code</label>
-          <input
-            id="code"
-            type="text"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            placeholder="Enter code"
-          />
-          <button id="verify-code" class="secondary">Verify Code</button>
+    <main class="shell">
+      <section class="hero">
+        <div class="copy">
+          <p class="eyebrow">Embeddable Checkout Widget</p>
+          <h1>Mount the full login, paywall, and stream flow anywhere.</h1>
+          <p class="lead">
+            This page is a host shell. The livestream access experience below is rendered by the
+            embeddable widget script, not by page-specific markup.
+          </p>
         </div>
       </section>
 
-      <section id="checkout-card" class="card-block hidden">
-        <p id="user-phone"></p>
-        <div class="action-row">
-          <button id="pay-button" class="primary">Pay With Stripe Checkout</button>
-          <a id="watch-link" class="link-btn hidden" href="/livestream">Watch Livestream</a>
-          <button id="logout-button" class="ghost">Log Out</button>
+      <section class="stage">
+        <div class="stage-header">
+          <div>
+            <h2 class="stage-title">Embedded Widget Demo</h2>
+            <p class="stage-note">Uses the same Twilio, Stripe, and livestream APIs as the app.</p>
+          </div>
+          <div class="badge">Sample Host Page</div>
         </div>
+        <div id="widget-demo" data-lion-sun-widget data-title="Livestream Access"></div>
       </section>
-
-      <p id="status" class="status"></p>
     </main>
 
-    <script src="https://unpkg.com/libphonenumber-js@1.11.18/bundle/libphonenumber-js.min.js"></script>
-    <script src="/config.js"></script>
-    <script>
-      const statusEl = document.getElementById('status');
-      const offerTextEl = document.getElementById('offer-text');
-
-      const authCardEl = document.getElementById('auth-card');
-      const checkoutCardEl = document.getElementById('checkout-card');
-      const codeSectionEl = document.getElementById('code-section');
-      const userPhoneEl = document.getElementById('user-phone');
-
-      const phoneEl = document.getElementById('phone');
-      const codeEl = document.getElementById('code');
-      const requestCodeEl = document.getElementById('request-code');
-      const verifyCodeEl = document.getElementById('verify-code');
-      const payButtonEl = document.getElementById('pay-button');
-      const logoutButtonEl = document.getElementById('logout-button');
-      const watchLinkEl = document.getElementById('watch-link');
-
-      offerTextEl.textContent = `${window.APP_CONFIG.offerText}. Access duration: ${window.APP_CONFIG.streamAccessHours} hours.`;
-      codeEl.maxLength = window.APP_CONFIG.loginCodeLength;
-
-      function digitsBeforeCaret(value, caret) {
-        return (value.slice(0, caret).match(/\d/g) || []).length;
-      }
-
-      function caretFromDigitIndex(formatted, digitIndex) {
-        if (digitIndex <= 0) {
-          return 0;
-        }
-        let count = 0;
-        for (let i = 0; i < formatted.length; i += 1) {
-          if (/\d/.test(formatted[i])) {
-            count += 1;
-            if (count === digitIndex) {
-              return i + 1;
-            }
-          }
-        }
-        return formatted.length;
-      }
-
-      function formatDigits(digits) {
-        const formatter = new libphonenumber.AsYouType('US');
-        return formatter.input(digits);
-      }
-
-      function applyPhoneDigits(nextDigits, caretDigitIndex) {
-        const limitedDigits = nextDigits.slice(0, 10);
-        const formatted = formatDigits(limitedDigits);
-        phoneEl.value = formatted;
-        phoneEl.dataset.digits = limitedDigits;
-        const caret = caretFromDigitIndex(formatted, Math.min(caretDigitIndex, limitedDigits.length));
-        phoneEl.setSelectionRange(caret, caret);
-      }
-
-      phoneEl.dataset.digits = '';
-
-      phoneEl.addEventListener('keydown', (event) => {
-        if (event.key !== 'Backspace' && event.key !== 'Delete') {
-          return;
-        }
-
-        const digits = phoneEl.dataset.digits || '';
-        const start = phoneEl.selectionStart || 0;
-        const end = phoneEl.selectionEnd || 0;
-        const startDigit = digitsBeforeCaret(phoneEl.value, start);
-        const endDigit = digitsBeforeCaret(phoneEl.value, end);
-        let nextDigits = digits;
-        let nextCaretDigit = startDigit;
-
-        if (startDigit !== endDigit) {
-          nextDigits = digits.slice(0, startDigit) + digits.slice(endDigit);
-          nextCaretDigit = startDigit;
-        } else if (event.key === 'Backspace') {
-          if ((event.ctrlKey || event.metaKey) && startDigit > 0) {
-            nextDigits = digits.slice(startDigit);
-            nextCaretDigit = 0;
-          } else if (startDigit > 0) {
-            nextDigits = digits.slice(0, startDigit - 1) + digits.slice(startDigit);
-            nextCaretDigit = startDigit - 1;
-          }
-        } else if (event.key === 'Delete') {
-          if (event.ctrlKey || event.metaKey) {
-            nextDigits = digits.slice(0, startDigit);
-            nextCaretDigit = startDigit;
-          } else if (startDigit < digits.length) {
-            nextDigits = digits.slice(0, startDigit) + digits.slice(startDigit + 1);
-            nextCaretDigit = startDigit;
-          }
-        }
-
-        event.preventDefault();
-        applyPhoneDigits(nextDigits, nextCaretDigit);
-      });
-
-      phoneEl.addEventListener('input', () => {
-        const rawValue = phoneEl.value;
-        const rawCaret = phoneEl.selectionStart || rawValue.length;
-        const nextDigits = rawValue.replace(/\D/g, '').slice(0, 10);
-        const caretDigitIndex = digitsBeforeCaret(rawValue, rawCaret);
-        applyPhoneDigits(nextDigits, caretDigitIndex);
-      });
-
-      function getPhoneE164OrNull() {
-        const parsed = libphonenumber.parsePhoneNumberFromString(phoneEl.value, 'US');
-        if (!parsed || !parsed.isValid() || parsed.country !== 'US') {
-          return null;
-        }
-        return parsed.number;
-      }
-
-      function setStatus(message) {
-        statusEl.textContent = message;
-      }
-
-      function setBusy(isBusy) {
-        requestCodeEl.disabled = isBusy;
-        verifyCodeEl.disabled = isBusy;
-        payButtonEl.disabled = isBusy;
-        logoutButtonEl.disabled = isBusy;
-      }
-
-      function renderAuthState(state) {
-        if (state.authenticated) {
-          authCardEl.classList.add('hidden');
-          checkoutCardEl.classList.remove('hidden');
-          userPhoneEl.textContent = `Logged in as ${state.phone || 'phone user'}`;
-          watchLinkEl.classList.toggle('hidden', !state.hasAccess);
-        } else {
-          authCardEl.classList.remove('hidden');
-          checkoutCardEl.classList.add('hidden');
-          watchLinkEl.classList.add('hidden');
-        }
-      }
-
-      async function loadAuthState() {
-        const res = await fetch('/auth/me');
-        const data = await res.json();
-        renderAuthState(data);
-      }
-
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('canceled') === '1') {
-        setStatus('Checkout canceled. You can try again.');
-      }
-
-      requestCodeEl.addEventListener('click', async () => {
-        const phone = getPhoneE164OrNull();
-        if (!phone) {
-          setStatus('Enter a valid US phone number.');
-          return;
-        }
-
-        setBusy(true);
-        setStatus('Sending code...');
-        try {
-          const res = await fetch('/auth/request-code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || 'Unable to send code');
-          }
-
-          codeSectionEl.classList.remove('hidden');
-          setStatus('Code sent by SMS.');
-        } catch (error) {
-          setStatus(error.message);
-        } finally {
-          setBusy(false);
-        }
-      });
-
-      verifyCodeEl.addEventListener('click', async () => {
-        const phone = getPhoneE164OrNull();
-        const code = codeEl.value.trim();
-        if (!phone || !code) {
-          setStatus('Enter both phone and code.');
-          return;
-        }
-
-        setBusy(true);
-        setStatus('Verifying code...');
-        try {
-          const res = await fetch('/auth/verify-code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone, code }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || 'Unable to verify code');
-          }
-
-          setStatus('Logged in.');
-          await loadAuthState();
-        } catch (error) {
-          setStatus(error.message);
-        } finally {
-          setBusy(false);
-        }
-      });
-
-      payButtonEl.addEventListener('click', async () => {
-        setBusy(true);
-        setStatus('Starting checkout...');
-        try {
-          const res = await fetch('/create-checkout-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          const data = await res.json();
-          if (!res.ok || !data.url) {
-            throw new Error(data.error || 'Checkout failed');
-          }
-
-          window.location.href = data.url;
-        } catch (error) {
-          setStatus(error.message);
-          setBusy(false);
-        }
-      });
-
-      logoutButtonEl.addEventListener('click', async () => {
-        setBusy(true);
-        try {
-          await fetch('/auth/logout', { method: 'POST' });
-          setStatus('Logged out.');
-          codeEl.value = '';
-          await loadAuthState();
-        } finally {
-          setBusy(false);
-        }
-      });
-
-      loadAuthState().catch(() => {
-        setStatus('Could not load auth state.');
-      });
-    </script>
+    <script src="/embed-widget.js"></script>
   </body>
 </html>

@@ -27,6 +27,8 @@ const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
   TWILIO_VERIFY_SERVICE_SID,
+  EMBED_ALLOWED_ORIGINS = '',
+  AUTH_COOKIE_SAME_SITE = 'Lax',
 } = process.env;
 
 if (!DATABASE_URL) {
@@ -67,9 +69,29 @@ const pool = new Pool({
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 let stripeOfferText = 'Livestream access';
+const embedAllowedOrigins = EMBED_ALLOWED_ORIGINS.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && embedAllowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
 
 function normalizePhone(rawPhone) {
   const phone = String(rawPhone || '').trim();
@@ -141,20 +163,46 @@ function parseCookieHeader(cookieHeader) {
 
 function setCookie(res, key, value, maxAgeSeconds) {
   const secure = BASE_URL.startsWith('https://');
+  const sameSite = AUTH_COOKIE_SAME_SITE;
+  const secureAttr = secure ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
-    `${key}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${
-      secure ? '; Secure' : ''
-    }`
+    `${key}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAgeSeconds}${secureAttr}`
   );
 }
 
 function clearCookie(res, key) {
   const secure = BASE_URL.startsWith('https://');
+  const sameSite = AUTH_COOKIE_SAME_SITE;
+  const secureAttr = secure ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
-    `${key}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`
+    `${key}=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0${secureAttr}`
   );
+}
+
+function getClientConfig() {
+  return {
+    offerText: stripeOfferText,
+    streamAccessHours: Number(STREAM_ACCESS_HOURS),
+    youtubeLivestreamId: YOUTUBE_LIVESTREAM_ID,
+    loginCodeLength: Number(LOGIN_CODE_LENGTH),
+    baseUrl: BASE_URL,
+  };
+}
+
+function isAllowedReturnUrl(returnUrl) {
+  if (!returnUrl) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(returnUrl);
+    const baseOrigin = new URL(BASE_URL).origin;
+    return parsed.origin === baseOrigin || embedAllowedOrigins.includes(parsed.origin);
+  } catch {
+    return false;
+  }
 }
 
 function getAuthUserFromRequest(req) {
@@ -340,6 +388,10 @@ app.get('/auth/me', async (req, res) => {
   }
 });
 
+app.get('/api/config', (_req, res) => {
+  return res.json(getClientConfig());
+});
+
 app.post('/auth/request-code', async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
@@ -411,6 +463,11 @@ app.post('/auth/logout', (_req, res) => {
 app.post('/create-checkout-session', requireAuth, async (req, res) => {
   try {
     const customerId = await getOrCreateStripeCustomerId(req.user.id, req.user.phone);
+    const returnUrl = isAllowedReturnUrl(req.body?.returnUrl) ? req.body.returnUrl : null;
+    const successUrl = returnUrl
+      ? `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&return_to=${encodeURIComponent(returnUrl)}`
+      : `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = returnUrl || `${BASE_URL}/?canceled=1`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -425,8 +482,8 @@ app.post('/create-checkout-session', requireAuth, async (req, res) => {
         userId: String(req.user.id),
         phone: req.user.phone,
       },
-      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/?canceled=1`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
     });
 
     return res.json({ url: session.url });
@@ -443,19 +500,20 @@ app.get('/success', async (req, res) => {
   }
 
   const { session_id: sessionId } = req.query;
+  const returnTo = isAllowedReturnUrl(req.query.return_to) ? req.query.return_to : null;
   if (!sessionId) {
-    return res.redirect('/');
+    return res.redirect(returnTo || '/');
   }
 
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     if (session.payment_status !== 'paid') {
-      return res.redirect('/');
+      return res.redirect(returnTo || '/');
     }
 
     const paidUserId = Number(session.metadata?.userId || 0);
     if (!paidUserId || paidUserId !== user.id) {
-      return res.redirect('/');
+      return res.redirect(returnTo || '/');
     }
 
     const paidAt = new Date((session.created || Math.floor(Date.now() / 1000)) * 1000);
@@ -470,10 +528,10 @@ app.get('/success', async (req, res) => {
       [user.id, session.id, Number(session.amount_total || 0), paidAt, accessExpiresAt]
     );
 
-    return res.redirect('/livestream');
+    return res.redirect(returnTo || '/livestream');
   } catch (error) {
     console.error('Session verification error:', error.message);
-    return res.redirect('/');
+    return res.redirect(returnTo || '/');
   }
 });
 
@@ -483,12 +541,7 @@ app.get('/livestream', requireAuthPage, requirePaidAccess, (_req, res) => {
 
 app.get('/config.js', (_req, res) => {
   res.type('application/javascript');
-  res.send(`window.APP_CONFIG = ${JSON.stringify({
-    offerText: stripeOfferText,
-    streamAccessHours: Number(STREAM_ACCESS_HOURS),
-    youtubeLivestreamId: YOUTUBE_LIVESTREAM_ID,
-    loginCodeLength: Number(LOGIN_CODE_LENGTH),
-  })};`);
+  res.send(`window.APP_CONFIG = ${JSON.stringify(getClientConfig())};`);
 });
 
 initDb()

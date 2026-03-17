@@ -1,7 +1,8 @@
 # Paywalled YouTube Livestream (Stripe Checkout + Twilio Verify Phone OTP)
 
 This app provides:
-- `GET /`: landing page with phone login-code auth and Stripe Checkout button
+- `GET /`: sample host page with the embeddable widget mounted
+- `GET /embed-widget.js`: embeddable widget script
 - `GET /livestream`: protected page with an embedded YouTube livestream
 
 Access flow:
@@ -53,7 +54,22 @@ npm start
 
 Open `http://localhost:3000`.
 
+## Widget usage
+
+```html
+<div id="livestream-widget"></div>
+<script src="https://your-app.example.com/embed-widget.js"></script>
+<script>
+  window.LionAndSunWidget.mount('#livestream-widget', {
+    apiBase: 'https://your-app.example.com',
+    title: 'Livestream Access'
+  });
+</script>
+```
+
 ## Configuration notes
 
 - `STRIPE_PRICE_ID`: existing Stripe Price ID used for Checkout (linked to your Stripe product).
 - `STREAM_ACCESS_HOURS`: access duration after a successful payment.
+- `AUTH_COOKIE_SAME_SITE`: set to `None` for cross-site embeds over HTTPS.
+- `EMBED_ALLOWED_ORIGINS`: comma-separated origins allowed to embed the widget and send credentialed API requests.

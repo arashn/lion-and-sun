@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget Embed Sample</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 2rem;
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        background: #f3f6fb;
+      }
+
+      .wrap {
+        width: min(900px, 100%);
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div id="livestream-widget"></div>
+    </div>
+
+    <script src="/embed-widget.js"></script>
+    <script>
+      window.LionAndSunWidget.mount('#livestream-widget', {
+        title: 'Sample Embedded Livestream'
+      });
+    </script>
+  </body>
+</html>
