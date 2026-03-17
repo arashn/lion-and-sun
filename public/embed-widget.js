@@ -114,6 +114,16 @@
         flex-wrap: wrap;
         gap: 0.6rem;
       }
+      .lsw-root .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .lsw-root .section-head .viewer-meta {
+        margin-bottom: 0;
+      }
       .lsw-root button,
       .lsw-root a.button {
         appearance: none;
@@ -153,11 +163,11 @@
         color: #38506f;
       }
       .lsw-root .payment-shell {
-        margin: 1rem 0;
         padding: 0.9rem;
-        border: 1px solid #d8e2f4;
+        border: 1px solid rgba(216, 226, 244, 0.32);
         border-radius: 14px;
-        background: #f8fbff;
+        background: rgba(248, 251, 255, 0.96);
+        backdrop-filter: blur(10px);
       }
       .lsw-root .payment-note {
         margin: 0 0 0.7rem;
@@ -213,6 +223,14 @@
         height: 100%;
         border: 0;
       }
+      .lsw-root .video-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 0 0 0.9rem;
+      }
       @media (max-width: 640px) {
         .lsw-root .topbar {
           padding: 0.95rem 1rem;
@@ -235,6 +253,7 @@
         config: null,
         auth: { authenticated: false, hasAccess: false },
         selectedAmountCents: null,
+        paymentOverlayOpen: false,
       };
       this.renderShell();
     }
@@ -244,10 +263,12 @@
       this.bindElements();
       await this.loadInitialState();
       this.attachEvents();
-      try {
-        await this.ensurePaymentElement();
-      } catch (error) {
-        this.setStatus(error.message);
+      if (this.state.paymentOverlayOpen) {
+        try {
+          await this.ensurePaymentElement();
+        } catch (error) {
+          this.setStatus(error.message);
+        }
       }
     }
 
@@ -274,8 +295,10 @@
               </div>
             </section>
             <section class="card hidden" data-pay-card>
-              <p class="viewer-meta" data-viewer-meta></p>
-              <p class="viewer-meta" data-pay-meta></p>
+              <div class="section-head">
+                <p class="viewer-meta" data-pay-meta></p>
+                <button class="ghost" type="button" data-close-payment>Close</button>
+              </div>
               <div class="amount-grid" data-amount-grid></div>
               <div class="custom-wrap">
                 <div class="custom-field">
@@ -290,10 +313,16 @@
               </div>
               <div class="actions">
                 <button class="primary" type="button" data-pay>Pay With Card</button>
-                <button class="ghost" type="button" data-logout>Log Out</button>
               </div>
             </section>
             <section class="card hidden" data-video-card>
+              <div class="video-toolbar">
+                <p class="viewer-meta" data-viewer-meta></p>
+                <div class="actions">
+                  <button class="secondary hidden" type="button" data-donate-more>Donate More</button>
+                  <button class="ghost" type="button" data-logout>Log Out</button>
+                </div>
+              </div>
               <p class="viewer-meta" data-video-meta></p>
               <div class="video">
                 <iframe
@@ -321,6 +350,7 @@
       this.videoCardEl = $('[data-video-card]');
       this.viewerMetaEl = $('[data-viewer-meta]');
       this.payMetaEl = $('[data-pay-meta]');
+      this.closePaymentEl = $('[data-close-payment]');
       this.amountGridEl = $('[data-amount-grid]');
       this.customAmountEl = $('#custom-amount');
       this.applyCustomEl = $('[data-apply-custom]');
@@ -333,6 +363,7 @@
       this.requestCodeEl = $('[data-request-code]');
       this.verifyCodeEl = $('[data-verify-code]');
       this.payEl = $('[data-pay]');
+      this.donateMoreEl = $('[data-donate-more]');
       this.logoutEl = $('[data-logout]');
       this.videoFrameEl = $('[data-video-frame]');
     }
@@ -345,6 +376,8 @@
       this.verifyCodeEl.addEventListener('click', () => this.verifyCode());
       this.applyCustomEl.addEventListener('click', () => this.applyCustomAmount());
       this.payEl.addEventListener('click', () => this.startCheckout());
+      this.closePaymentEl.addEventListener('click', () => this.closePaymentSection());
+      this.donateMoreEl.addEventListener('click', () => this.openPaymentOverlay());
       this.logoutEl.addEventListener('click', () => this.logout());
     }
 
@@ -353,6 +386,7 @@
       this.state.config = config;
       this.state.auth = auth;
       this.state.selectedAmountCents = config.minPaymentAmountCents;
+      this.state.paymentOverlayOpen = !auth.hasAccess;
       this.stripe = window.Stripe(config.stripePublishableKey);
       this.render();
     }
@@ -376,6 +410,8 @@
       this.verifyCodeEl.disabled = isBusy;
       this.payEl.disabled = isBusy || !this.paymentElementReady;
       this.logoutEl.disabled = isBusy;
+      this.donateMoreEl.disabled = isBusy;
+      this.closePaymentEl.disabled = isBusy;
       this.applyCustomEl.disabled = isBusy;
       this.amountGridEl.querySelectorAll('button').forEach((button) => {
         button.disabled = isBusy;
@@ -425,7 +461,7 @@
 
       this.state.selectedAmountCents = amountCents;
       this.render();
-      if (this.state.auth.authenticated) {
+      if (this.state.auth.authenticated && this.state.paymentOverlayOpen) {
         this.setStatus(`Preparing payment form for ${this.formatCurrency(amountCents)}...`);
         try {
           await this.ensurePaymentElement(true);
@@ -433,6 +469,40 @@
         } catch (error) {
           this.setStatus(error.message);
         }
+      }
+    }
+
+    async openPaymentOverlay() {
+      this.state.paymentOverlayOpen = true;
+      this.render();
+      try {
+        await this.ensurePaymentElement();
+      } catch (error) {
+        this.setStatus(error.message);
+      }
+    }
+
+    closePaymentOverlay() {
+      this.state.paymentOverlayOpen = false;
+      this.resetPaymentElement();
+      this.render();
+    }
+
+    async closePaymentSection() {
+      this.setBusy(true);
+      try {
+        if (this.paymentIntentId) {
+          await this.fetchJson('/payments/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ paymentIntentId: this.paymentIntentId }),
+          });
+        }
+        this.closePaymentOverlay();
+        this.setStatus('Payment form closed.');
+      } catch (error) {
+        this.setStatus(error.message);
+      } finally {
+        this.setBusy(false);
       }
     }
 
@@ -537,11 +607,12 @@
       this.codeEl.maxLength = config.loginCodeLength;
       this.renderAmountOptions();
       this.loginCardEl.classList.toggle('hidden', auth.authenticated);
-      this.payCardEl.classList.toggle('hidden', !auth.authenticated);
+      this.payCardEl.classList.toggle('hidden', !auth.authenticated || (auth.hasAccess && !this.state.paymentOverlayOpen));
       this.videoCardEl.classList.toggle('hidden', !auth.hasAccess);
       this.payMetaEl.textContent = '';
       this.videoMetaEl.textContent = '';
       this.paymentShellEl.classList.toggle('hidden', !auth.authenticated);
+      this.donateMoreEl.classList.toggle('hidden', !auth.hasAccess);
 
       if (auth.authenticated) {
         this.viewerMetaEl.textContent = `Logged in as ${auth.phone || 'phone user'}`;
@@ -606,6 +677,7 @@
           body: JSON.stringify({ phone, code }),
         });
         this.state.auth = await this.fetchJson('/auth/me');
+        this.state.paymentOverlayOpen = !this.state.auth.hasAccess;
         this.render();
         await this.ensurePaymentElement(true);
         this.setStatus('Logged in.');
@@ -654,7 +726,8 @@
           body: JSON.stringify({ paymentIntentId: result.paymentIntent.id }),
         });
         this.state.auth = await this.fetchJson('/auth/me');
-        await this.ensurePaymentElement(true);
+        this.state.paymentOverlayOpen = false;
+        this.resetPaymentElement();
         this.render();
         this.setStatus('Payment successful. Livestream access is active.');
       } catch (error) {
@@ -669,6 +742,7 @@
       try {
         await this.fetchJson('/auth/logout', { method: 'POST' });
         this.state.auth = { authenticated: false, hasAccess: false };
+        this.state.paymentOverlayOpen = false;
         this.codeEl.value = '';
         this.codeBlockEl.classList.add('hidden');
         this.resetPaymentElement();
@@ -688,6 +762,7 @@
       }
       this.elements = null;
       this.clientSecret = null;
+      this.paymentIntentId = null;
       this.paymentElementReady = false;
       this.paymentElementReadyPromise = null;
       if (this.paymentElementEl) {
@@ -701,20 +776,38 @@
         return;
       }
 
-      if (forceRefresh) {
+      if (forceRefresh && !this.paymentElement) {
         this.resetPaymentElement();
       }
 
-      if (this.paymentElement) {
+      if (this.paymentElement && !forceRefresh) {
         return;
       }
 
       const paymentIntent = await this.fetchJson('/create-payment-intent', {
         method: 'POST',
-        body: JSON.stringify({ amountCents: this.state.selectedAmountCents }),
+        body: JSON.stringify({
+          amountCents: this.state.selectedAmountCents,
+          paymentIntentId: this.paymentIntentId,
+        }),
       });
 
+      this.paymentIntentId = paymentIntent.paymentIntentId;
       this.clientSecret = paymentIntent.clientSecret;
+
+      if (this.paymentElement && paymentIntent.reusedExisting) {
+        this.paymentElementReady = true;
+        this.paymentElementReadyPromise = Promise.resolve();
+        this.setBusy(false);
+        return;
+      }
+
+      if (this.paymentElement) {
+        this.resetPaymentElement();
+        this.paymentIntentId = paymentIntent.paymentIntentId;
+        this.clientSecret = paymentIntent.clientSecret;
+      }
+
       this.elements = this.stripe.elements({
         clientSecret: this.clientSecret,
         appearance: {

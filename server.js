@@ -483,11 +483,38 @@ app.post('/auth/logout', (_req, res) => {
 app.post('/create-payment-intent', requireAuth, async (req, res) => {
   try {
     const amountCents = Number(req.body?.amountCents);
+    const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
     if (!Number.isInteger(amountCents) || amountCents < minPaymentAmountCents) {
       return res.status(400).json({ error: `Amount must be at least ${minPaymentAmountCents} cents` });
     }
 
     const customerId = await getOrCreateStripeCustomerId(req.user.id, req.user.phone);
+
+    if (paymentIntentId) {
+      const existingIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const paidUserId = Number(existingIntent.metadata?.userId || 0);
+      const updatableStatuses = new Set([
+        'requires_payment_method',
+        'requires_confirmation',
+        'requires_action',
+      ]);
+
+      if (paidUserId !== req.user.id) {
+        return res.status(403).json({ error: 'Payment intent does not belong to this user' });
+      }
+
+      if (updatableStatuses.has(existingIntent.status)) {
+        const updatedIntent = await stripe.paymentIntents.update(paymentIntentId, {
+          amount: amountCents,
+        });
+
+        return res.json({
+          clientSecret: updatedIntent.client_secret,
+          paymentIntentId: updatedIntent.id,
+          reusedExisting: true,
+        });
+      }
+    }
 
     const intent = await stripe.paymentIntents.create({
       customer: customerId,
@@ -500,7 +527,11 @@ app.post('/create-payment-intent', requireAuth, async (req, res) => {
       },
     });
 
-    return res.json({ clientSecret: intent.client_secret, paymentIntentId: intent.id });
+    return res.json({
+      clientSecret: intent.client_secret,
+      paymentIntentId: intent.id,
+      reusedExisting: false,
+    });
   } catch (error) {
     console.error('Stripe payment intent error:', error.message);
     return res.status(500).json({ error: 'Unable to start payment' });
@@ -540,6 +571,39 @@ app.post('/payments/finalize', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Payment finalization error:', error.message);
     return res.status(500).json({ error: 'Unable to finalize payment' });
+  }
+});
+
+app.post('/payments/cancel', requireAuth, async (req, res) => {
+  try {
+    const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'Missing paymentIntentId' });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paidUserId = Number(paymentIntent.metadata?.userId || 0);
+    if (!paidUserId || paidUserId !== req.user.id) {
+      return res.status(403).json({ error: 'Payment intent does not belong to this user' });
+    }
+
+    const cancellableStatuses = new Set([
+      'requires_payment_method',
+      'requires_confirmation',
+      'requires_action',
+      'requires_capture',
+      'processing',
+    ]);
+
+    if (!cancellableStatuses.has(paymentIntent.status)) {
+      return res.json({ success: true, cancelled: false, status: paymentIntent.status });
+    }
+
+    await stripe.paymentIntents.cancel(paymentIntentId);
+    return res.json({ success: true, cancelled: true });
+  } catch (error) {
+    console.error('Payment cancel error:', error.message);
+    return res.status(500).json({ error: 'Unable to cancel payment' });
   }
 });
 
