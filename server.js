@@ -18,8 +18,11 @@ const {
   DATABASE_URL,
   DATABASE_SSL = 'false',
   STRIPE_SECRET_KEY,
+  STRIPE_PUBLISHABLE_KEY,
   STRIPE_PRICE_ID,
   STREAM_ACCESS_HOURS = '24',
+  MIN_PAYMENT_AMOUNT_USD_CENTS = '1000',
+  SUGGESTED_AMOUNTS_USD_CENTS = '1000,2000,5000',
   LOGIN_CODE_LENGTH = '6',
   AUTH_SESSION_DAYS = '30',
   ACCESS_TOKEN_SECRET,
@@ -36,6 +39,9 @@ if (!DATABASE_URL) {
 }
 if (!STRIPE_SECRET_KEY) {
   throw new Error('Missing STRIPE_SECRET_KEY');
+}
+if (!STRIPE_PUBLISHABLE_KEY) {
+  throw new Error('Missing STRIPE_PUBLISHABLE_KEY');
 }
 if (!STRIPE_PRICE_ID) {
   throw new Error('Missing STRIPE_PRICE_ID');
@@ -69,6 +75,12 @@ const pool = new Pool({
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 let stripeOfferText = 'Livestream access';
+let stripePriceAmountCents = 0;
+let stripePriceCurrency = 'usd';
+const minPaymentAmountCents = Number(MIN_PAYMENT_AMOUNT_USD_CENTS);
+const suggestedAmountsCents = SUGGESTED_AMOUNTS_USD_CENTS.split(',')
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isInteger(value) && value >= minPaymentAmountCents);
 const embedAllowedOrigins = EMBED_ALLOWED_ORIGINS.split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -188,6 +200,12 @@ function getClientConfig() {
     youtubeLivestreamId: YOUTUBE_LIVESTREAM_ID,
     loginCodeLength: Number(LOGIN_CODE_LENGTH),
     baseUrl: BASE_URL,
+    stripePublishableKey: STRIPE_PUBLISHABLE_KEY,
+    minPaymentAmountCents,
+    suggestedAmountsCents: suggestedAmountsCents.length
+      ? suggestedAmountsCents
+      : [minPaymentAmountCents, minPaymentAmountCents * 2, minPaymentAmountCents * 5],
+    currency: stripePriceCurrency,
   };
 }
 
@@ -311,6 +329,8 @@ async function initStripeOfferText() {
   const price = await stripe.prices.retrieve(STRIPE_PRICE_ID, {
     expand: ['product'],
   });
+  stripePriceAmountCents = Number(price.unit_amount || 0);
+  stripePriceCurrency = String(price.currency || 'usd');
 
   const productName =
     price.product && typeof price.product === 'object' && price.product.name
@@ -460,36 +480,66 @@ app.post('/auth/logout', (_req, res) => {
   return res.json({ success: true });
 });
 
-app.post('/create-checkout-session', requireAuth, async (req, res) => {
+app.post('/create-payment-intent', requireAuth, async (req, res) => {
   try {
-    const customerId = await getOrCreateStripeCustomerId(req.user.id, req.user.phone);
-    const returnUrl = isAllowedReturnUrl(req.body?.returnUrl) ? req.body.returnUrl : null;
-    const successUrl = returnUrl
-      ? `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&return_to=${encodeURIComponent(returnUrl)}`
-      : `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = returnUrl || `${BASE_URL}/?canceled=1`;
+    const amountCents = Number(req.body?.amountCents);
+    if (!Number.isInteger(amountCents) || amountCents < minPaymentAmountCents) {
+      return res.status(400).json({ error: `Amount must be at least ${minPaymentAmountCents} cents` });
+    }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+    const customerId = await getOrCreateStripeCustomerId(req.user.id, req.user.phone);
+
+    const intent = await stripe.paymentIntents.create({
       customer: customerId,
-      line_items: [
-        {
-          price: STRIPE_PRICE_ID,
-          quantity: 1,
-        },
-      ],
+      amount: amountCents,
+      currency: stripePriceCurrency,
+      payment_method_types: ['card'],
       metadata: {
         userId: String(req.user.id),
         phone: req.user.phone,
       },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
     });
 
-    return res.json({ url: session.url });
+    return res.json({ clientSecret: intent.client_secret, paymentIntentId: intent.id });
   } catch (error) {
-    console.error('Stripe session error:', error.message);
-    return res.status(500).json({ error: 'Unable to start checkout' });
+    console.error('Stripe payment intent error:', error.message);
+    return res.status(500).json({ error: 'Unable to start payment' });
+  }
+});
+
+app.post('/payments/finalize', requireAuth, async (req, res) => {
+  try {
+    const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'Missing paymentIntentId' });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ error: 'Payment has not completed successfully' });
+    }
+
+    const paidUserId = Number(paymentIntent.metadata?.userId || 0);
+    if (!paidUserId || paidUserId !== req.user.id) {
+      return res.status(403).json({ error: 'Payment does not belong to this user' });
+    }
+
+    const paidAt = new Date((paymentIntent.created || Math.floor(Date.now() / 1000)) * 1000);
+    const accessExpiresAt = new Date(Date.now() + Number(STREAM_ACCESS_HOURS) * 60 * 60 * 1000);
+
+    await pool.query(
+      `
+        INSERT INTO twilio_purchases (user_id, stripe_session_id, amount_cents, paid_at, access_expires_at)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (stripe_session_id) DO NOTHING
+      `,
+      [req.user.id, paymentIntent.id, Number(paymentIntent.amount_received || paymentIntent.amount || 0), paidAt, accessExpiresAt]
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Payment finalization error:', error.message);
+    return res.status(500).json({ error: 'Unable to finalize payment' });
   }
 });
 

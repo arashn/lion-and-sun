@@ -1,8 +1,10 @@
 (function () {
   const LIBPHONE_URL = 'https://unpkg.com/libphonenumber-js@1.11.18/bundle/libphonenumber-js.min.js';
+  const STRIPE_JS_URL = 'https://js.stripe.com/v3/';
   const currentScript = document.currentScript;
   const defaultBaseUrl = currentScript ? new URL(currentScript.src, window.location.href).origin : window.location.origin;
   let libPhonePromise = null;
+  let stripeJsPromise = null;
 
   function loadLibPhone() {
     if (window.libphonenumber) {
@@ -24,62 +26,82 @@
     return libPhonePromise;
   }
 
+  function loadStripeJs() {
+    if (window.Stripe) {
+      return Promise.resolve(window.Stripe);
+    }
+    if (stripeJsPromise) {
+      return stripeJsPromise;
+    }
+
+    stripeJsPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = STRIPE_JS_URL;
+      script.async = true;
+      script.onload = () => resolve(window.Stripe);
+      script.onerror = () => reject(new Error('Failed to load Stripe.js'));
+      document.head.appendChild(script);
+    });
+
+    return stripeJsPromise;
+  }
+
   function createWidgetStyles() {
     return `
-      :host {
+      .lsw-root {
         display: block;
         color: #142033;
         font-family: "Trebuchet MS", "Segoe UI", sans-serif;
       }
-      * {
+      .lsw-root * {
         box-sizing: border-box;
       }
-      .frame {
+      .lsw-root .frame {
         background: linear-gradient(180deg, #fcfdff 0%, #f2f6fd 100%);
         border: 1px solid #d8e2f4;
         border-radius: 18px;
         box-shadow: 0 16px 50px rgba(20, 32, 51, 0.1);
         overflow: hidden;
       }
-      .topbar {
+      .lsw-root .topbar {
         padding: 1rem 1.25rem;
         background: linear-gradient(135deg, #0d2345 0%, #1d4d8f 100%);
         color: #fff;
       }
-      .eyebrow {
+      .lsw-root .eyebrow {
         margin: 0 0 0.3rem;
         font-size: 0.78rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         opacity: 0.75;
       }
-      .title {
+      .lsw-root .title {
         margin: 0;
         font-size: 1.4rem;
       }
-      .body {
+      .lsw-root .body {
         padding: 1.25rem;
       }
-      .offer {
+      .lsw-root .offer {
         margin: 0 0 1rem;
         color: #38506f;
       }
-      .card {
+      .lsw-root .card {
         border: 1px solid #d8e2f4;
         border-radius: 14px;
         padding: 1rem;
         background: #fff;
       }
-      .hidden {
+      .lsw-root .hidden {
         display: none !important;
       }
-      label {
+      .lsw-root label {
         display: block;
         margin-bottom: 0.4rem;
         font-size: 0.9rem;
         color: #38506f;
       }
-      input {
+      .lsw-root input {
         width: 100%;
         padding: 0.8rem 0.9rem;
         border-radius: 12px;
@@ -87,13 +109,13 @@
         font-size: 1rem;
         margin-bottom: 0.75rem;
       }
-      .actions {
+      .lsw-root .actions {
         display: flex;
         flex-wrap: wrap;
         gap: 0.6rem;
       }
-      button,
-      a.button {
+      .lsw-root button,
+      .lsw-root a.button {
         appearance: none;
         border: 0;
         border-radius: 12px;
@@ -102,35 +124,81 @@
         cursor: pointer;
         text-decoration: none;
       }
-      .primary {
+      .lsw-root .primary {
         background: #1765ff;
         color: #fff;
       }
-      .primary:hover {
+      .lsw-root .primary:hover {
         background: #0f4fd1;
       }
-      .secondary {
+      .lsw-root .secondary {
         background: #eef4ff;
         color: #15396b;
       }
-      .ghost {
+      .lsw-root .ghost {
         background: #edf1f7;
         color: #142033;
       }
-      button:disabled {
+      .lsw-root button:disabled {
         opacity: 0.65;
         cursor: wait;
       }
-      .status {
+      .lsw-root .status {
         min-height: 1.4rem;
         margin: 0.9rem 0 0;
         color: #38506f;
       }
-      .viewer-meta {
+      .lsw-root .viewer-meta {
         margin: 0 0 0.9rem;
         color: #38506f;
       }
-      .video {
+      .lsw-root .payment-shell {
+        margin: 1rem 0;
+        padding: 0.9rem;
+        border: 1px solid #d8e2f4;
+        border-radius: 14px;
+        background: #f8fbff;
+      }
+      .lsw-root .payment-note {
+        margin: 0 0 0.7rem;
+        color: #506681;
+        font-size: 0.9rem;
+      }
+      .lsw-root .amount-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin: 0.9rem 0 0.85rem;
+      }
+      .lsw-root .amount-chip {
+        padding: 0.7rem 0.95rem;
+        border-radius: 999px;
+        border: 1px solid #cad8ee;
+        background: #fff;
+        color: #15396b;
+      }
+      .lsw-root .amount-chip.is-active {
+        background: #1765ff;
+        border-color: #1765ff;
+        color: #fff;
+      }
+      .lsw-root .custom-wrap {
+        display: flex;
+        gap: 0.65rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        margin-bottom: 0.85rem;
+      }
+      .lsw-root .custom-field {
+        flex: 1 1 220px;
+      }
+      .lsw-root .custom-field input {
+        margin-bottom: 0;
+      }
+      .lsw-root .payment-element {
+        min-height: 46px;
+      }
+      .lsw-root .video {
         position: relative;
         width: 100%;
         padding-top: 56.25%;
@@ -138,7 +206,7 @@
         border-radius: 14px;
         overflow: hidden;
       }
-      .video iframe {
+      .lsw-root .video iframe {
         position: absolute;
         inset: 0;
         width: 100%;
@@ -146,10 +214,10 @@
         border: 0;
       }
       @media (max-width: 640px) {
-        .topbar {
+        .lsw-root .topbar {
           padding: 0.95rem 1rem;
         }
-        .body {
+        .lsw-root .body {
           padding: 1rem;
         }
       }
@@ -162,25 +230,32 @@
       this.options = options || {};
       this.apiBase = (this.options.apiBase || defaultBaseUrl).replace(/\/$/, '');
       this.returnUrl = this.options.returnUrl || window.location.href;
-      this.shadow = rootEl.attachShadow({ mode: 'open' });
+      this.root = rootEl;
       this.state = {
         config: null,
         auth: { authenticated: false, hasAccess: false },
+        selectedAmountCents: null,
       };
       this.renderShell();
     }
 
     async mount() {
-      await loadLibPhone();
+      await Promise.all([loadLibPhone(), loadStripeJs()]);
       this.bindElements();
       await this.loadInitialState();
       this.attachEvents();
+      try {
+        await this.ensurePaymentElement();
+      } catch (error) {
+        this.setStatus(error.message);
+      }
     }
 
     renderShell() {
       const title = this.options.title || 'Private Livestream';
-      this.shadow.innerHTML = `
+      this.root.innerHTML = `
         <style>${createWidgetStyles()}</style>
+        <div class="lsw-root">
         <div class="frame">
           <div class="topbar">
             <p class="eyebrow">Lion and Sun</p>
@@ -200,8 +275,21 @@
             </section>
             <section class="card hidden" data-pay-card>
               <p class="viewer-meta" data-viewer-meta></p>
+              <p class="viewer-meta" data-pay-meta></p>
+              <div class="amount-grid" data-amount-grid></div>
+              <div class="custom-wrap">
+                <div class="custom-field">
+                  <label for="custom-amount">Custom amount (USD)</label>
+                  <input id="custom-amount" type="number" min="10" step="1" inputmode="decimal" placeholder="10" />
+                </div>
+                <button class="secondary" type="button" data-apply-custom>Use Custom Amount</button>
+              </div>
+              <div class="payment-shell" data-payment-shell>
+                <p class="payment-note">Card details stay inside this page.</p>
+                <div class="payment-element" data-payment-element></div>
+              </div>
               <div class="actions">
-                <button class="primary" type="button" data-pay>Pay With Stripe Checkout</button>
+                <button class="primary" type="button" data-pay>Pay With Card</button>
                 <button class="ghost" type="button" data-logout>Log Out</button>
               </div>
             </section>
@@ -220,17 +308,24 @@
             <p class="status" data-status></p>
           </div>
         </div>
+        </div>
       `;
     }
 
     bindElements() {
-      const $ = (selector) => this.shadow.querySelector(selector);
+      const $ = (selector) => this.root.querySelector(selector);
       this.offerEl = $('[data-offer]');
       this.loginCardEl = $('[data-login-card]');
       this.codeBlockEl = $('[data-code-block]');
       this.payCardEl = $('[data-pay-card]');
       this.videoCardEl = $('[data-video-card]');
       this.viewerMetaEl = $('[data-viewer-meta]');
+      this.payMetaEl = $('[data-pay-meta]');
+      this.amountGridEl = $('[data-amount-grid]');
+      this.customAmountEl = $('#custom-amount');
+      this.applyCustomEl = $('[data-apply-custom]');
+      this.paymentShellEl = $('[data-payment-shell]');
+      this.paymentElementEl = $('[data-payment-element]');
       this.videoMetaEl = $('[data-video-meta]');
       this.statusEl = $('[data-status]');
       this.phoneEl = $('#phone');
@@ -248,6 +343,7 @@
       this.phoneEl.addEventListener('input', () => this.onPhoneInput());
       this.requestCodeEl.addEventListener('click', () => this.requestCode());
       this.verifyCodeEl.addEventListener('click', () => this.verifyCode());
+      this.applyCustomEl.addEventListener('click', () => this.applyCustomAmount());
       this.payEl.addEventListener('click', () => this.startCheckout());
       this.logoutEl.addEventListener('click', () => this.logout());
     }
@@ -256,6 +352,8 @@
       const [config, auth] = await Promise.all([this.fetchJson('/api/config'), this.fetchJson('/auth/me')]);
       this.state.config = config;
       this.state.auth = auth;
+      this.state.selectedAmountCents = config.minPaymentAmountCents;
+      this.stripe = window.Stripe(config.stripePublishableKey);
       this.render();
     }
 
@@ -276,12 +374,79 @@
     setBusy(isBusy) {
       this.requestCodeEl.disabled = isBusy;
       this.verifyCodeEl.disabled = isBusy;
-      this.payEl.disabled = isBusy;
+      this.payEl.disabled = isBusy || !this.paymentElementReady;
       this.logoutEl.disabled = isBusy;
+      this.applyCustomEl.disabled = isBusy;
+      this.amountGridEl.querySelectorAll('button').forEach((button) => {
+        button.disabled = isBusy;
+      });
     }
 
     setStatus(message) {
       this.statusEl.textContent = message || '';
+    }
+
+    formatCurrency(amountCents) {
+      const config = this.state.config;
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: (config && config.currency ? config.currency : 'usd').toUpperCase(),
+      }).format(amountCents / 100);
+    }
+
+    renderAmountOptions() {
+      const config = this.state.config;
+      const selected = this.state.selectedAmountCents;
+      this.amountGridEl.innerHTML = '';
+
+      config.suggestedAmountsCents.forEach((amountCents) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `amount-chip${selected === amountCents ? ' is-active' : ''}`;
+        button.textContent = this.formatCurrency(amountCents);
+        button.addEventListener('click', () => {
+          this.customAmountEl.value = String(amountCents / 100);
+          this.setSelectedAmount(amountCents);
+        });
+        this.amountGridEl.appendChild(button);
+      });
+
+      this.customAmountEl.min = String(config.minPaymentAmountCents / 100);
+      if (!this.customAmountEl.value) {
+        this.customAmountEl.value = String(selected / 100);
+      }
+    }
+
+    async setSelectedAmount(amountCents) {
+      if (this.state.selectedAmountCents === amountCents) {
+        this.render();
+        return;
+      }
+
+      this.state.selectedAmountCents = amountCents;
+      this.render();
+      if (this.state.auth.authenticated) {
+        this.setStatus(`Preparing payment form for ${this.formatCurrency(amountCents)}...`);
+        try {
+          await this.ensurePaymentElement(true);
+          this.setStatus('');
+        } catch (error) {
+          this.setStatus(error.message);
+        }
+      }
+    }
+
+    async applyCustomAmount() {
+      const config = this.state.config;
+      const amountDollars = Number(this.customAmountEl.value);
+      const amountCents = Math.round(amountDollars * 100);
+
+      if (!Number.isFinite(amountDollars) || amountCents < config.minPaymentAmountCents) {
+        this.setStatus(`Custom amount must be at least ${this.formatCurrency(config.minPaymentAmountCents)}.`);
+        return;
+      }
+
+      await this.setSelectedAmount(amountCents);
     }
 
     digitsBeforeCaret(value, caret) {
@@ -370,13 +535,27 @@
       const auth = this.state.auth;
       this.offerEl.textContent = `${config.offerText}. Access duration: ${config.streamAccessHours} hours.`;
       this.codeEl.maxLength = config.loginCodeLength;
+      this.renderAmountOptions();
       this.loginCardEl.classList.toggle('hidden', auth.authenticated);
-      this.payCardEl.classList.toggle('hidden', !auth.authenticated || auth.hasAccess);
+      this.payCardEl.classList.toggle('hidden', !auth.authenticated);
       this.videoCardEl.classList.toggle('hidden', !auth.hasAccess);
+      this.payMetaEl.textContent = '';
+      this.videoMetaEl.textContent = '';
+      this.paymentShellEl.classList.toggle('hidden', !auth.authenticated);
 
       if (auth.authenticated) {
         this.viewerMetaEl.textContent = `Logged in as ${auth.phone || 'phone user'}`;
-        this.videoMetaEl.textContent = `${auth.phone || 'Viewer'} has active access.`;
+        if (auth.hasAccess) {
+          this.payMetaEl.textContent = `You already have access. You can contribute ${this.formatCurrency(this.state.selectedAmountCents)} or choose another amount.`;
+          this.payEl.textContent = 'Pay More With Card';
+          this.videoMetaEl.textContent = `${auth.phone || 'Viewer'} has active access.`;
+        } else {
+          this.payMetaEl.textContent = `Complete payment of ${this.formatCurrency(this.state.selectedAmountCents)} or more to unlock the livestream.`;
+          this.payEl.textContent = `Pay ${this.formatCurrency(this.state.selectedAmountCents)}`;
+        }
+      } else {
+        this.viewerMetaEl.textContent = '';
+        this.payEl.textContent = `Pay ${this.formatCurrency(this.state.selectedAmountCents)}`;
       }
 
       if (auth.hasAccess) {
@@ -384,6 +563,8 @@
       } else {
         this.videoFrameEl.removeAttribute('src');
       }
+
+      this.setBusy(false);
     }
 
     async requestCode() {
@@ -425,8 +606,9 @@
           body: JSON.stringify({ phone, code }),
         });
         this.state.auth = await this.fetchJson('/auth/me');
-        this.setStatus('Logged in.');
         this.render();
+        await this.ensurePaymentElement(true);
+        this.setStatus('Logged in.');
       } catch (error) {
         this.setStatus(error.message);
       } finally {
@@ -435,16 +617,49 @@
     }
 
     async startCheckout() {
+      if (!this.state.auth.authenticated) {
+        this.setStatus('Log in first.');
+        return;
+      }
+
       this.setBusy(true);
-      this.setStatus('Starting checkout...');
+      this.setStatus('Preparing payment...');
       try {
-        const session = await this.fetchJson('/create-checkout-session', {
-          method: 'POST',
-          body: JSON.stringify({ returnUrl: this.returnUrl }),
+        if (!this.elements) {
+          await this.ensurePaymentElement(true);
+        }
+        if (!this.elements || !this.paymentElementReadyPromise) {
+          throw new Error('Payment form is not ready.');
+        }
+        await this.paymentElementReadyPromise;
+        if (!this.paymentElementReady) {
+          throw new Error('Payment form is not ready.');
+        }
+
+        this.setStatus('Processing payment...');
+        const result = await this.stripe.confirmPayment({
+          elements: this.elements,
+          redirect: 'if_required',
         });
-        window.location.href = session.url;
+
+        if (result.error) {
+          throw new Error(result.error.message || 'Payment failed');
+        }
+        if (!result.paymentIntent || result.paymentIntent.status !== 'succeeded') {
+          throw new Error('Payment was not completed');
+        }
+
+        await this.fetchJson('/payments/finalize', {
+          method: 'POST',
+          body: JSON.stringify({ paymentIntentId: result.paymentIntent.id }),
+        });
+        this.state.auth = await this.fetchJson('/auth/me');
+        await this.ensurePaymentElement(true);
+        this.render();
+        this.setStatus('Payment successful. Livestream access is active.');
       } catch (error) {
         this.setStatus(error.message);
+      } finally {
         this.setBusy(false);
       }
     }
@@ -456,6 +671,7 @@
         this.state.auth = { authenticated: false, hasAccess: false };
         this.codeEl.value = '';
         this.codeBlockEl.classList.add('hidden');
+        this.resetPaymentElement();
         this.setStatus('Logged out.');
         this.render();
       } catch (error) {
@@ -463,6 +679,64 @@
       } finally {
         this.setBusy(false);
       }
+    }
+
+    resetPaymentElement() {
+      if (this.paymentElement) {
+        this.paymentElement.destroy();
+        this.paymentElement = null;
+      }
+      this.elements = null;
+      this.clientSecret = null;
+      this.paymentElementReady = false;
+      this.paymentElementReadyPromise = null;
+      if (this.paymentElementEl) {
+        this.paymentElementEl.innerHTML = '';
+      }
+    }
+
+    async ensurePaymentElement(forceRefresh) {
+      if (!this.state.auth.authenticated) {
+        this.resetPaymentElement();
+        return;
+      }
+
+      if (forceRefresh) {
+        this.resetPaymentElement();
+      }
+
+      if (this.paymentElement) {
+        return;
+      }
+
+      const paymentIntent = await this.fetchJson('/create-payment-intent', {
+        method: 'POST',
+        body: JSON.stringify({ amountCents: this.state.selectedAmountCents }),
+      });
+
+      this.clientSecret = paymentIntent.clientSecret;
+      this.elements = this.stripe.elements({
+        clientSecret: this.clientSecret,
+        appearance: {
+          theme: 'stripe',
+          variables: {
+            colorPrimary: '#1765ff',
+            colorText: '#142033',
+            borderRadius: '12px',
+          },
+        },
+      });
+      this.paymentElement = this.elements.create('payment');
+      this.paymentElementReady = false;
+      this.paymentElementReadyPromise = new Promise((resolve) => {
+        this.paymentElement.on('ready', () => {
+          this.paymentElementReady = true;
+          this.setBusy(false);
+          resolve();
+        });
+      });
+      this.paymentElement.mount(this.paymentElementEl);
+      this.setBusy(true);
     }
   }
 

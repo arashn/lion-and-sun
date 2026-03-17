@@ -1,4 +1,4 @@
-# Paywalled YouTube Livestream (Stripe Checkout + Twilio Verify Phone OTP)
+# Paywalled YouTube Livestream (Stripe Elements + Twilio Verify Phone OTP)
 
 This app provides:
 - `GET /`: sample host page with the embeddable widget mounted
@@ -8,7 +8,7 @@ This app provides:
 Access flow:
 1. User requests an SMS login code via Twilio Verify.
 2. User verifies the code and receives an app auth cookie.
-3. Logged-in user pays with Stripe Checkout.
+3. Logged-in user pays inline with Stripe Elements, choosing a preset or custom amount.
 4. Successful payment is recorded in Postgres.
 5. `/livestream` is available while access is active.
 
@@ -25,7 +25,10 @@ Access flow:
 3. Fill `.env` values:
    - `DATABASE_URL`: Postgres connection string
    - `STRIPE_SECRET_KEY`: your Stripe secret key
+   - `STRIPE_PUBLISHABLE_KEY`: your Stripe publishable key
    - `STRIPE_PRICE_ID`: existing Stripe Price ID (for example, `price_...`)
+   - `MIN_PAYMENT_AMOUNT_USD_CENTS`: minimum allowed payment amount
+   - `SUGGESTED_AMOUNTS_USD_CENTS`: comma-separated preset amounts for the widget
    - `ACCESS_TOKEN_SECRET`: long random secret for signed auth cookies
    - `TWILIO_ACCOUNT_SID`: Twilio account SID
    - `TWILIO_AUTH_TOKEN`: Twilio auth token
@@ -69,7 +72,9 @@ Open `http://localhost:3000`.
 
 ## Configuration notes
 
-- `STRIPE_PRICE_ID`: existing Stripe Price ID used for Checkout (linked to your Stripe product).
+- `STRIPE_PRICE_ID`: existing Stripe Price ID used to derive the offer label shown in the widget.
+- `MIN_PAYMENT_AMOUNT_USD_CENTS`: minimum payment amount enforced server-side.
+- `SUGGESTED_AMOUNTS_USD_CENTS`: preset payment options shown in the widget.
 - `STREAM_ACCESS_HOURS`: access duration after a successful payment.
 - `AUTH_COOKIE_SAME_SITE`: set to `None` for cross-site embeds over HTTPS.
 - `EMBED_ALLOWED_ORIGINS`: comma-separated origins allowed to embed the widget and send credentialed API requests.
