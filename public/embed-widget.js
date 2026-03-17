@@ -178,6 +178,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.6rem;
+        align-items: center;
         margin: 0.9rem 0 0.85rem;
       }
       .lsw-root .amount-chip {
@@ -195,15 +196,27 @@
       .lsw-root .custom-wrap {
         display: flex;
         gap: 0.65rem;
-        align-items: flex-end;
-        flex-wrap: wrap;
-        margin-bottom: 0.85rem;
+        align-items: center;
+        flex-wrap: nowrap;
+        margin: 0;
       }
       .lsw-root .custom-field {
-        flex: 1 1 220px;
+        flex: 0 1 140px;
+      }
+      .lsw-root .custom-field label {
+        margin-bottom: 0.25rem;
+        font-size: 0.8rem;
       }
       .lsw-root .custom-field input {
         margin-bottom: 0;
+      }
+      @media (max-width: 760px) {
+        .lsw-root .custom-wrap {
+          flex-wrap: wrap;
+        }
+        .lsw-root .custom-field {
+          flex-basis: 100%;
+        }
       }
       .lsw-root .payment-element {
         min-height: 46px;
@@ -300,13 +313,6 @@
                 <button class="ghost" type="button" data-close-payment>Close</button>
               </div>
               <div class="amount-grid" data-amount-grid></div>
-              <div class="custom-wrap">
-                <div class="custom-field">
-                  <label for="custom-amount">Custom amount (USD)</label>
-                  <input id="custom-amount" type="number" min="10" step="1" inputmode="decimal" placeholder="10" />
-                </div>
-                <button class="secondary" type="button" data-apply-custom>Use Custom Amount</button>
-              </div>
               <div class="payment-shell" data-payment-shell>
                 <p class="payment-note">Card details stay inside this page.</p>
                 <div class="payment-element" data-payment-element></div>
@@ -352,8 +358,6 @@
       this.payMetaEl = $('[data-pay-meta]');
       this.closePaymentEl = $('[data-close-payment]');
       this.amountGridEl = $('[data-amount-grid]');
-      this.customAmountEl = $('#custom-amount');
-      this.applyCustomEl = $('[data-apply-custom]');
       this.paymentShellEl = $('[data-payment-shell]');
       this.paymentElementEl = $('[data-payment-element]');
       this.videoMetaEl = $('[data-video-meta]');
@@ -366,6 +370,17 @@
       this.donateMoreEl = $('[data-donate-more]');
       this.logoutEl = $('[data-logout]');
       this.videoFrameEl = $('[data-video-frame]');
+      this.customAmountEl = document.createElement('input');
+      this.customAmountEl.id = 'custom-amount';
+      this.customAmountEl.type = 'number';
+      this.customAmountEl.min = '10';
+      this.customAmountEl.step = '1';
+      this.customAmountEl.inputMode = 'decimal';
+      this.customAmountEl.placeholder = '10';
+      this.applyCustomEl = document.createElement('button');
+      this.applyCustomEl.type = 'button';
+      this.applyCustomEl.className = 'secondary';
+      this.applyCustomEl.textContent = 'Use Custom Amount';
     }
 
     attachEvents() {
@@ -446,6 +461,22 @@
         });
         this.amountGridEl.appendChild(button);
       });
+
+      const customWrap = document.createElement('div');
+      customWrap.className = 'custom-wrap';
+
+      const customField = document.createElement('div');
+      customField.className = 'custom-field';
+
+      const customLabel = document.createElement('label');
+      customLabel.htmlFor = 'custom-amount';
+      customLabel.textContent = 'Custom amount';
+
+      // customField.appendChild(customLabel);
+      customField.appendChild(this.customAmountEl);
+      customWrap.appendChild(customField);
+      customWrap.appendChild(this.applyCustomEl);
+      this.amountGridEl.appendChild(customWrap);
 
       this.customAmountEl.min = String(config.minPaymentAmountCents / 100);
       if (!this.customAmountEl.value) {
