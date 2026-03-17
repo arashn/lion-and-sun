@@ -75,7 +75,6 @@ const pool = new Pool({
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 let stripeOfferText = 'Livestream access';
-let stripePriceAmountCents = 0;
 let stripePriceCurrency = 'usd';
 const minPaymentAmountCents = Number(MIN_PAYMENT_AMOUNT_USD_CENTS);
 const suggestedAmountsCents = SUGGESTED_AMOUNTS_USD_CENTS.split(',')
@@ -329,7 +328,6 @@ async function initStripeOfferText() {
   const price = await stripe.prices.retrieve(STRIPE_PRICE_ID, {
     expand: ['product'],
   });
-  stripePriceAmountCents = Number(price.unit_amount || 0);
   stripePriceCurrency = String(price.currency || 'usd');
 
   const productName =
