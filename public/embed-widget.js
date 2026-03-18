@@ -320,7 +320,6 @@
             <h2 class="title">${title}</h2>
           </div>
           <div class="body">
-            <p class="offer" data-offer></p>
             <section class="card" data-login-card>
               <label for="phone">Phone (US)</label>
               <input id="phone" type="tel" placeholder="(415) 555-0123" autocomplete="tel-national" />
@@ -373,7 +372,6 @@
 
     bindElements() {
       const $ = (selector) => this.root.querySelector(selector);
-      this.offerEl = $('[data-offer]');
       this.loginCardEl = $('[data-login-card]');
       this.codeBlockEl = $('[data-code-block]');
       this.payCardEl = $('[data-pay-card]');
@@ -410,12 +408,24 @@
     attachEvents() {
       this.phoneEl.dataset.digits = '';
       this.phoneEl.addEventListener('keydown', (event) => this.onPhoneKeyDown(event));
+      this.phoneEl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          this.requestCode();
+        }
+      });
       this.phoneEl.addEventListener('input', () => this.onPhoneInput());
+      this.codeEl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          this.verifyCode();
+        }
+      });
       this.requestCodeEl.addEventListener('click', () => this.requestCode());
       this.verifyCodeEl.addEventListener('click', () => this.verifyCode());
       this.applyCustomEl.addEventListener('click', () => this.applyCustomAmount());
       this.payEl.addEventListener('click', () => this.startCheckout());
-      this.closePaymentEl.addEventListener('click', () => this.closePaymentSection());
+      this.closePaymentEl.addEventListener('click', () => this.handlePaymentSecondaryAction());
       this.donateMoreEl.addEventListener('click', () => this.openPaymentOverlay());
       this.logoutEl.addEventListener('click', () => this.logout());
     }
@@ -578,6 +588,15 @@
       }
     }
 
+    async handlePaymentSecondaryAction() {
+      if (this.state.auth.hasAccess) {
+        await this.closePaymentSection();
+        return;
+      }
+
+      await this.logout();
+    }
+
     async applyCustomAmount() {
       const config = this.state.config;
       const amountDollars = Number(this.customAmountEl.value);
@@ -675,7 +694,6 @@
     render() {
       const config = this.state.config;
       const auth = this.state.auth;
-      this.offerEl.textContent = `${config.offerText}. Access duration: ${config.streamAccessHours} hours.`;
       this.codeEl.maxLength = config.loginCodeLength;
       this.renderAmountOptions();
       this.loginCardEl.classList.toggle('hidden', auth.authenticated);
@@ -685,6 +703,7 @@
       this.videoMetaEl.textContent = '';
       this.paymentShellEl.classList.toggle('hidden', !auth.authenticated);
       this.donateMoreEl.classList.toggle('hidden', !auth.hasAccess);
+      this.closePaymentEl.textContent = auth.hasAccess ? 'Close' : 'Log Out';
 
       if (auth.authenticated) {
         this.viewerMetaEl.textContent = `Logged in as ${auth.phone || 'phone user'}`;
@@ -725,6 +744,8 @@
           body: JSON.stringify({ phone }),
         });
         this.codeBlockEl.classList.remove('hidden');
+        this.codeEl.focus();
+        this.codeEl.select();
         this.setStatus('Code sent by SMS.');
       } catch (error) {
         this.setStatus(error.message);
