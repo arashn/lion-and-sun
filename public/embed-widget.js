@@ -741,6 +741,17 @@
       return parsed.number;
     }
 
+    formatPhoneForDisplay(phone) {
+      const parsed = window.libphonenumber.parsePhoneNumberFromString(
+        phone,
+        this.state.phoneCountryCode || 'US'
+      );
+      if (!parsed || !parsed.isValid()) {
+        return phone || 'phone user';
+      }
+      return parsed.formatNational();
+    }
+
     render() {
       const config = this.state.config;
       const auth = this.state.auth;
@@ -758,11 +769,12 @@
       this.closePaymentEl.textContent = auth.hasAccess ? 'Close' : 'Log Out';
 
       if (auth.authenticated) {
-        this.viewerMetaEl.textContent = `Logged in as ${auth.phone || 'phone user'}`;
+        const displayPhone = this.formatPhoneForDisplay(auth.phone);
+        this.viewerMetaEl.textContent = `Logged in as ${displayPhone}`;
         if (auth.hasAccess) {
           this.payMetaEl.textContent = `You already have access. You can contribute ${this.formatCurrency(this.state.selectedAmountCents)} or choose another amount.`;
           this.payEl.textContent = 'Pay More With Card';
-          this.videoMetaEl.textContent = `${auth.phone || 'Viewer'} has active access.`;
+          this.videoMetaEl.textContent = `${displayPhone} has active access.`;
         } else {
           this.payMetaEl.textContent = `Complete payment of ${this.formatCurrency(this.state.selectedAmountCents)} or more to unlock the livestream.`;
           this.payEl.textContent = `Pay ${this.formatCurrency(this.state.selectedAmountCents)}`;
