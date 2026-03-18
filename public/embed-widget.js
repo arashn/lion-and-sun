@@ -889,6 +889,7 @@
         appearance: {
           theme: 'night',
           variables: {
+            colorBackground: '#1b2d32',
             borderRadius: '12px',
           },
         },
