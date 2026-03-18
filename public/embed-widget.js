@@ -520,6 +520,7 @@
         const totalSeconds = Math.floor(remainingMs / 1000);
         const days = Math.floor(totalSeconds / 86400);
         const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
 
         if (remainingMs <= 0) {
@@ -527,7 +528,7 @@
           return;
         }
 
-        this.offerEl.textContent = `Event starts in ${days} days, ${hours} hours, ${seconds} seconds`;
+        this.offerEl.textContent = `Event starts in ${days} days, ${hours} hours, ${minutes} minutes, ${seconds} seconds`;
       };
 
       renderCountdown();
