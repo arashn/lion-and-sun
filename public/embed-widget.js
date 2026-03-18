@@ -6,6 +6,26 @@
   let libPhonePromise = null;
   let stripeJsPromise = null;
 
+  function readStorage(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStorage(key, value) {
+    try {
+      if (value === null) {
+        window.localStorage.removeItem(key);
+      } else {
+        window.localStorage.setItem(key, value);
+      }
+    } catch {
+      // Ignore storage failures and fall back to in-memory token handling.
+    }
+  }
+
   function loadLibPhone() {
     if (window.libphonenumber) {
       return Promise.resolve(window.libphonenumber);
@@ -52,12 +72,15 @@
         display: block;
         color: #142033;
         font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        background: inherit;
+        --lsw-frame-background: inherit;
+        --lsw-card-background: #fff;
       }
       .lsw-root * {
         box-sizing: border-box;
       }
       .lsw-root .frame {
-        background: linear-gradient(180deg, #fcfdff 0%, #f2f6fd 100%);
+        background: var(--lsw-frame-background);
         border: 1px solid #d8e2f4;
         border-radius: 18px;
         box-shadow: 0 16px 50px rgba(20, 32, 51, 0.1);
@@ -90,7 +113,7 @@
         border: 1px solid #d8e2f4;
         border-radius: 14px;
         padding: 1rem;
-        background: #fff;
+        background: var(--lsw-card-background);
       }
       .lsw-root .hidden {
         display: none !important;
@@ -166,7 +189,6 @@
         padding: 0.9rem;
         border: 1px solid rgba(216, 226, 244, 0.32);
         border-radius: 14px;
-        background: rgba(248, 251, 255, 0.96);
         backdrop-filter: blur(10px);
       }
       .lsw-root .payment-note {
@@ -261,6 +283,8 @@
       this.options = options || {};
       this.apiBase = (this.options.apiBase || defaultBaseUrl).replace(/\/$/, '');
       this.returnUrl = this.options.returnUrl || window.location.href;
+      this.storageKey = `lion-and-sun-auth-token:${this.apiBase}`;
+      this.authToken = readStorage(this.storageKey);
       this.root = rootEl;
       this.state = {
         config: null,
@@ -407,17 +431,34 @@
     }
 
     async fetchJson(path, options) {
+      const headers = { 'Content-Type': 'application/json', ...(options && options.headers ? options.headers : {}) };
+      if (this.authToken) {
+        headers.Authorization = `Bearer ${this.authToken}`;
+      }
+
       const response = await fetch(`${this.apiBase}${path}`, {
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         ...options,
       });
 
       const payload = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        this.clearAuthToken();
+      }
       if (!response.ok) {
         throw new Error(payload.error || 'Request failed');
       }
       return payload;
+    }
+
+    setAuthToken(token) {
+      this.authToken = token || null;
+      writeStorage(this.storageKey, this.authToken);
+    }
+
+    clearAuthToken() {
+      this.setAuthToken(null);
     }
 
     setBusy(isBusy) {
@@ -703,10 +744,13 @@
       this.setBusy(true);
       this.setStatus('Verifying code...');
       try {
-        await this.fetchJson('/auth/verify-code', {
+        const verifyResult = await this.fetchJson('/auth/verify-code', {
           method: 'POST',
           body: JSON.stringify({ phone, code }),
         });
+        if (verifyResult.authToken) {
+          this.setAuthToken(verifyResult.authToken);
+        }
         this.state.auth = await this.fetchJson('/auth/me');
         this.state.paymentOverlayOpen = !this.state.auth.hasAccess;
         this.render();
@@ -772,6 +816,7 @@
       this.setBusy(true);
       try {
         await this.fetchJson('/auth/logout', { method: 'POST' });
+        this.clearAuthToken();
         this.state.auth = { authenticated: false, hasAccess: false };
         this.state.paymentOverlayOpen = false;
         this.codeEl.value = '';
@@ -842,10 +887,8 @@
       this.elements = this.stripe.elements({
         clientSecret: this.clientSecret,
         appearance: {
-          theme: 'stripe',
+          theme: 'night',
           variables: {
-            colorPrimary: '#1765ff',
-            colorText: '#142033',
             borderRadius: '12px',
           },
         },

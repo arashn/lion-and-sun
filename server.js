@@ -92,7 +92,7 @@ app.use((req, res, next) => {
   if (origin && embedAllowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
     res.setHeader('Vary', 'Origin');
   }
@@ -172,6 +172,14 @@ function parseCookieHeader(cookieHeader) {
   return cookies;
 }
 
+function getBearerToken(req) {
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  return authHeader.slice('Bearer '.length).trim() || null;
+}
+
 function setCookie(res, key, value, maxAgeSeconds) {
   const secure = BASE_URL.startsWith('https://');
   const sameSite = AUTH_COOKIE_SAME_SITE;
@@ -224,7 +232,7 @@ function isAllowedReturnUrl(returnUrl) {
 
 function getAuthUserFromRequest(req) {
   const cookies = parseCookieHeader(req.headers.cookie);
-  const authToken = cookies.auth_token;
+  const authToken = getBearerToken(req) || cookies.auth_token;
   const payload = verifySignedToken(authToken);
   if (!payload || !payload.sub || !payload.phone) {
     return null;
@@ -466,7 +474,7 @@ app.post('/auth/verify-code', async (req, res) => {
 
     setCookie(res, 'auth_token', authToken, Number(AUTH_SESSION_DAYS) * 24 * 60 * 60);
 
-    return res.json({ success: true });
+    return res.json({ success: true, authToken });
   } catch (error) {
     console.error('Twilio verify-code error:', error.message);
     return res.status(500).json({ error: 'Unable to verify login code' });
