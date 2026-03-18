@@ -1,6 +1,7 @@
 (function () {
   const LIBPHONE_URL = 'https://unpkg.com/libphonenumber-js@1.11.18/bundle/libphonenumber-js.min.js';
   const STRIPE_JS_URL = 'https://js.stripe.com/v3/';
+  const GEOLOOKUP_URL = 'https://ipapi.co/json/';
   const currentScript = document.currentScript;
   const defaultBaseUrl = currentScript ? new URL(currentScript.src, window.location.href).origin : window.location.origin;
   let libPhonePromise = null;
@@ -64,6 +65,17 @@
     });
 
     return stripeJsPromise;
+  }
+
+  async function detectCountryCode() {
+    try {
+      const response = await fetch(GEOLOOKUP_URL);
+      const payload = await response.json();
+      const countryCode = String(payload.country_code || payload.country || '').toUpperCase();
+      return /^[A-Z]{2}$/.test(countryCode) ? countryCode : 'US';
+    } catch {
+      return 'US';
+    }
   }
 
   function createWidgetStyles() {
@@ -291,6 +303,7 @@
         auth: { authenticated: false, hasAccess: false },
         selectedAmountCents: null,
         paymentOverlayOpen: false,
+        phoneCountryCode: 'US',
       };
       this.countdownInterval = null;
       this.renderShell();
@@ -323,8 +336,8 @@
           <div class="body">
             <p class="offer" data-offer></p>
             <section class="card" data-login-card>
-              <label for="phone">Phone (US)</label>
-              <input id="phone" type="tel" placeholder="(415) 555-0123" autocomplete="tel-national" />
+              <label for="phone">Phone</label>
+              <input id="phone" type="tel" placeholder="Phone number" autocomplete="tel" />
               <button class="primary" type="button" data-request-code>Send Login Code</button>
               <div class="hidden" data-code-block>
                 <label for="code">Login Code</label>
@@ -434,11 +447,16 @@
     }
 
     async loadInitialState() {
-      const [config, auth] = await Promise.all([this.fetchJson('/api/config'), this.fetchJson('/auth/me')]);
+      const [config, auth, phoneCountryCode] = await Promise.all([
+        this.fetchJson('/api/config'),
+        this.fetchJson('/auth/me'),
+        detectCountryCode(),
+      ]);
       this.state.config = config;
       this.state.auth = auth;
       this.state.selectedAmountCents = config.minPaymentAmountCents;
       this.state.paymentOverlayOpen = !auth.hasAccess;
+      this.state.phoneCountryCode = phoneCountryCode;
       this.stripe = window.Stripe(config.stripePublishableKey);
       this.render();
     }
@@ -659,8 +677,8 @@
     }
 
     applyPhoneDigits(nextDigits, caretDigitIndex) {
-      const limitedDigits = nextDigits.slice(0, 10);
-      const formatter = new window.libphonenumber.AsYouType('US');
+      const limitedDigits = nextDigits.slice(0, 15);
+      const formatter = new window.libphonenumber.AsYouType(this.state.phoneCountryCode || 'US');
       const formatted = formatter.input(limitedDigits);
       this.phoneEl.value = formatted;
       this.phoneEl.dataset.digits = limitedDigits;
@@ -706,14 +724,17 @@
     onPhoneInput() {
       const rawValue = this.phoneEl.value;
       const rawCaret = this.phoneEl.selectionStart || rawValue.length;
-      const nextDigits = rawValue.replace(/\D/g, '').slice(0, 10);
+      const nextDigits = rawValue.replace(/\D/g, '').slice(0, 15);
       const caretDigitIndex = this.digitsBeforeCaret(rawValue, rawCaret);
       this.applyPhoneDigits(nextDigits, caretDigitIndex);
     }
 
     getPhoneE164OrNull() {
-      const parsed = window.libphonenumber.parsePhoneNumberFromString(this.phoneEl.value, 'US');
-      if (!parsed || !parsed.isValid() || parsed.country !== 'US') {
+      const parsed = window.libphonenumber.parsePhoneNumberFromString(
+        this.phoneEl.value,
+        this.state.phoneCountryCode || 'US'
+      );
+      if (!parsed || !parsed.isValid()) {
         return null;
       }
       return parsed.number;
@@ -724,6 +745,7 @@
       const auth = this.state.auth;
       this.startCountdown();
       this.codeEl.maxLength = config.loginCodeLength;
+      this.phoneEl.placeholder = this.state.phoneCountryCode === 'US' ? '(415) 555-0123' : 'Phone number';
       this.renderAmountOptions();
       this.loginCardEl.classList.toggle('hidden', auth.authenticated);
       this.payCardEl.classList.toggle('hidden', !auth.authenticated || (auth.hasAccess && !this.state.paymentOverlayOpen));
@@ -761,7 +783,7 @@
     async requestCode() {
       const phone = this.getPhoneE164OrNull();
       if (!phone) {
-        this.setStatus('Enter a valid US phone number.');
+        this.setStatus('Enter a valid phone number.');
         return;
       }
 
@@ -770,7 +792,7 @@
       try {
         await this.fetchJson('/auth/request-code', {
           method: 'POST',
-          body: JSON.stringify({ phone }),
+          body: JSON.stringify({ phone, countryCode: this.state.phoneCountryCode }),
         });
         this.codeBlockEl.classList.remove('hidden');
         this.codeEl.focus();
@@ -796,7 +818,7 @@
       try {
         const verifyResult = await this.fetchJson('/auth/verify-code', {
           method: 'POST',
-          body: JSON.stringify({ phone, code }),
+          body: JSON.stringify({ phone, code, countryCode: this.state.phoneCountryCode }),
         });
         if (verifyResult.authToken) {
           this.setAuthToken(verifyResult.authToken);

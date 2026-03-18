@@ -108,10 +108,15 @@ app.use((req, res, next) => {
   return next();
 });
 
-function normalizePhone(rawPhone) {
+function normalizePhone(rawPhone, countryCode) {
   const phone = String(rawPhone || '').trim();
-  const parsed = parsePhoneNumberFromString(phone, 'US');
-  if (!parsed || !parsed.isValid() || parsed.country !== 'US') {
+  const normalizedCountryCode = /^[A-Z]{2}$/.test(String(countryCode || '').toUpperCase())
+    ? String(countryCode).toUpperCase()
+    : undefined;
+  const parsed = phone.startsWith('+')
+    ? parsePhoneNumberFromString(phone)
+    : parsePhoneNumberFromString(phone, normalizedCountryCode);
+  if (!parsed || !parsed.isValid()) {
     return null;
   }
   return parsed.number;
@@ -425,9 +430,9 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/auth/request-code', async (req, res) => {
   try {
-    const phone = normalizePhone(req.body?.phone);
+    const phone = normalizePhone(req.body?.phone, req.body?.countryCode);
     if (!phone) {
-      return res.status(400).json({ error: 'Valid E.164 phone is required (example: +14155550123)' });
+      return res.status(400).json({ error: 'Valid phone number is required' });
     }
 
     await twilioClient.verify.v2
@@ -443,7 +448,7 @@ app.post('/auth/request-code', async (req, res) => {
 
 app.post('/auth/verify-code', async (req, res) => {
   try {
-    const phone = normalizePhone(req.body?.phone);
+    const phone = normalizePhone(req.body?.phone, req.body?.countryCode);
     const code = String(req.body?.code || '').trim();
 
     if (!phone || !/^\d+$/.test(code) || code.length !== Number(LOGIN_CODE_LENGTH)) {

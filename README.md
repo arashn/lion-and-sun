@@ -41,7 +41,7 @@ Access flow:
 In Twilio Console:
 - Create a Verify Service.
 - Enable SMS channel.
-- The app formats US numbers as-you-type and submits E.164 automatically.
+- The app detects the visitor's country via `https://ipapi.co/json/`, formats phone numbers with `libphonenumber-js`, and submits E.164 automatically.
 
 ## Database
 
