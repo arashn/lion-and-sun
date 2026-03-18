@@ -29,6 +29,7 @@ Access flow:
    - `STRIPE_PRICE_ID`: existing Stripe Price ID (for example, `price_...`)
    - `MIN_PAYMENT_AMOUNT_USD_CENTS`: minimum allowed payment amount
    - `SUGGESTED_AMOUNTS_USD_CENTS`: comma-separated preset amounts for the widget
+   - `EVENT_START_TIME`: event start time in ISO-8601 format
    - `ACCESS_TOKEN_SECRET`: long random secret for signed auth cookies
    - `TWILIO_ACCOUNT_SID`: Twilio account SID
    - `TWILIO_AUTH_TOKEN`: Twilio auth token
@@ -75,6 +76,7 @@ Open `http://localhost:3000`.
 - `STRIPE_PRICE_ID`: existing Stripe Price ID used to derive the offer label shown in the widget.
 - `MIN_PAYMENT_AMOUNT_USD_CENTS`: minimum payment amount enforced server-side.
 - `SUGGESTED_AMOUNTS_USD_CENTS`: preset payment options shown in the widget.
+- `EVENT_START_TIME`: drives the live countdown shown at the top of the widget.
 - `STREAM_ACCESS_HOURS`: access duration after a successful payment.
 - `AUTH_COOKIE_SAME_SITE`: set to `None` for cross-site embeds over HTTPS.
 - `EMBED_ALLOWED_ORIGINS`: comma-separated origins allowed to embed the widget and send credentialed API requests.

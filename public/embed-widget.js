@@ -292,6 +292,7 @@
         selectedAmountCents: null,
         paymentOverlayOpen: false,
       };
+      this.countdownInterval = null;
       this.renderShell();
     }
 
@@ -320,6 +321,7 @@
             <h2 class="title">${title}</h2>
           </div>
           <div class="body">
+            <p class="offer" data-offer></p>
             <section class="card" data-login-card>
               <label for="phone">Phone (US)</label>
               <input id="phone" type="tel" placeholder="(415) 555-0123" autocomplete="tel-national" />
@@ -372,6 +374,7 @@
 
     bindElements() {
       const $ = (selector) => this.root.querySelector(selector);
+      this.offerEl = $('[data-offer]');
       this.loginCardEl = $('[data-login-card]');
       this.codeBlockEl = $('[data-code-block]');
       this.payCardEl = $('[data-pay-card]');
@@ -486,6 +489,31 @@
 
     setStatus(message) {
       this.statusEl.textContent = message || '';
+    }
+
+    startCountdown() {
+      if (this.countdownInterval) {
+        window.clearInterval(this.countdownInterval);
+      }
+
+      const renderCountdown = () => {
+        const eventStartMs = Date.parse(this.state.config.eventStartTime);
+        const remainingMs = Math.max(0, eventStartMs - Date.now());
+        const totalSeconds = Math.floor(remainingMs / 1000);
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const seconds = totalSeconds % 60;
+
+        if (remainingMs <= 0) {
+          this.offerEl.textContent = 'Event has started';
+          return;
+        }
+
+        this.offerEl.textContent = `Event starts in ${days} days, ${hours} hours, ${seconds} seconds`;
+      };
+
+      renderCountdown();
+      this.countdownInterval = window.setInterval(renderCountdown, 1000);
     }
 
     formatCurrency(amountCents) {
@@ -694,6 +722,7 @@
     render() {
       const config = this.state.config;
       const auth = this.state.auth;
+      this.startCountdown();
       this.codeEl.maxLength = config.loginCodeLength;
       this.renderAmountOptions();
       this.loginCardEl.classList.toggle('hidden', auth.authenticated);

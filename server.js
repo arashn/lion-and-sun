@@ -23,6 +23,7 @@ const {
   STREAM_ACCESS_HOURS = '24',
   MIN_PAYMENT_AMOUNT_USD_CENTS = '1000',
   SUGGESTED_AMOUNTS_USD_CENTS = '1000,2000,5000',
+  EVENT_START_TIME,
   LOGIN_CODE_LENGTH = '6',
   AUTH_SESSION_DAYS = '30',
   ACCESS_TOKEN_SECRET,
@@ -45,6 +46,9 @@ if (!STRIPE_PUBLISHABLE_KEY) {
 }
 if (!STRIPE_PRICE_ID) {
   throw new Error('Missing STRIPE_PRICE_ID');
+}
+if (!EVENT_START_TIME || Number.isNaN(Date.parse(EVENT_START_TIME))) {
+  throw new Error('Missing or invalid EVENT_START_TIME');
 }
 if (!YOUTUBE_LIVESTREAM_ID) {
   throw new Error('Missing YOUTUBE_LIVESTREAM_ID');
@@ -203,6 +207,7 @@ function clearCookie(res, key) {
 function getClientConfig() {
   return {
     offerText: stripeOfferText,
+    eventStartTime: EVENT_START_TIME,
     streamAccessHours: Number(STREAM_ACCESS_HOURS),
     youtubeLivestreamId: YOUTUBE_LIVESTREAM_ID,
     loginCodeLength: Number(LOGIN_CODE_LENGTH),
