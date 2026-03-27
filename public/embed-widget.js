@@ -294,7 +294,7 @@
       this.rootEl = rootEl;
       this.options = options || {};
       this.apiBase = (this.options.apiBase || defaultBaseUrl).replace(/\/$/, '');
-      this.returnUrl = this.options.returnUrl || new URL('/livestream', this.apiBase).toString();
+      this.returnUrl = this.options.returnUrl || window.location.href;
       this.storageKey = `lion-and-sun-auth-token:${this.apiBase}`;
       this.authToken = readStorage(this.storageKey);
       this.root = rootEl;
@@ -751,14 +751,6 @@
       return parsed.formatNational();
     }
 
-    isOnReturnUrl() {
-      try {
-        return new URL(window.location.href).href === new URL(this.returnUrl, window.location.href).href;
-      } catch {
-        return window.location.href === this.returnUrl;
-      }
-    }
-
     render() {
       const config = this.state.config;
       const auth = this.state.auth;
@@ -847,11 +839,6 @@
         });
         if (verifyResult.authToken) {
           this.setAuthToken(verifyResult.authToken);
-        }
-        if (!this.isOnReturnUrl()) {
-          this.setStatus('Logged in. Redirecting to the livestream...');
-          window.location.assign(this.returnUrl);
-          return;
         }
         this.state.auth = await this.fetchJson('/auth/me');
         this.state.paymentOverlayOpen = !this.hasContributed(this.state.auth);
