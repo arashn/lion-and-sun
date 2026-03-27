@@ -18,8 +18,12 @@ const {
   DATABASE_URL,
   DATABASE_SSL = 'false',
   STRIPE_SECRET_KEY,
+  STRIPE_PUBLISHABLE_KEY,
   STRIPE_PRICE_ID,
   STREAM_ACCESS_HOURS = '24',
+  MIN_PAYMENT_AMOUNT_USD_CENTS = '1000',
+  SUGGESTED_AMOUNTS_USD_CENTS = '1000,2000,5000',
+  EVENT_START_TIME,
   LOGIN_CODE_LENGTH = '6',
   AUTH_SESSION_DAYS = '30',
   ACCESS_TOKEN_SECRET,
@@ -27,6 +31,8 @@ const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
   TWILIO_VERIFY_SERVICE_SID,
+  EMBED_ALLOWED_ORIGINS = '',
+  AUTH_COOKIE_SAME_SITE = 'Lax',
 } = process.env;
 
 if (!DATABASE_URL) {
@@ -35,8 +41,14 @@ if (!DATABASE_URL) {
 if (!STRIPE_SECRET_KEY) {
   throw new Error('Missing STRIPE_SECRET_KEY');
 }
+if (!STRIPE_PUBLISHABLE_KEY) {
+  throw new Error('Missing STRIPE_PUBLISHABLE_KEY');
+}
 if (!STRIPE_PRICE_ID) {
   throw new Error('Missing STRIPE_PRICE_ID');
+}
+if (!EVENT_START_TIME || Number.isNaN(Date.parse(EVENT_START_TIME))) {
+  throw new Error('Missing or invalid EVENT_START_TIME');
 }
 if (!YOUTUBE_LIVESTREAM_ID) {
   throw new Error('Missing YOUTUBE_LIVESTREAM_ID');
@@ -67,14 +79,44 @@ const pool = new Pool({
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 let stripeOfferText = 'Livestream access';
+let stripePriceCurrency = 'usd';
+const minPaymentAmountCents = Number(MIN_PAYMENT_AMOUNT_USD_CENTS);
+const suggestedAmountsCents = SUGGESTED_AMOUNTS_USD_CENTS.split(',')
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isInteger(value) && value >= minPaymentAmountCents);
+const embedAllowedOrigins = EMBED_ALLOWED_ORIGINS.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-function normalizePhone(rawPhone) {
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && embedAllowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
+
+function normalizePhone(rawPhone, countryCode) {
   const phone = String(rawPhone || '').trim();
-  const parsed = parsePhoneNumberFromString(phone, 'US');
-  if (!parsed || !parsed.isValid() || parsed.country !== 'US') {
+  const normalizedCountryCode = /^[A-Z]{2}$/.test(String(countryCode || '').toUpperCase())
+    ? String(countryCode).toUpperCase()
+    : undefined;
+  const parsed = phone.startsWith('+')
+    ? parsePhoneNumberFromString(phone)
+    : parsePhoneNumberFromString(phone, normalizedCountryCode);
+  if (!parsed || !parsed.isValid()) {
     return null;
   }
   return parsed.number;
@@ -139,27 +181,68 @@ function parseCookieHeader(cookieHeader) {
   return cookies;
 }
 
+function getBearerToken(req) {
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  return authHeader.slice('Bearer '.length).trim() || null;
+}
+
 function setCookie(res, key, value, maxAgeSeconds) {
   const secure = BASE_URL.startsWith('https://');
+  const sameSite = AUTH_COOKIE_SAME_SITE;
+  const secureAttr = secure ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
-    `${key}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${
-      secure ? '; Secure' : ''
-    }`
+    `${key}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAgeSeconds}${secureAttr}`
   );
 }
 
 function clearCookie(res, key) {
   const secure = BASE_URL.startsWith('https://');
+  const sameSite = AUTH_COOKIE_SAME_SITE;
+  const secureAttr = secure ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
-    `${key}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`
+    `${key}=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0${secureAttr}`
   );
+}
+
+function getClientConfig() {
+  return {
+    offerText: stripeOfferText,
+    eventStartTime: EVENT_START_TIME,
+    streamAccessHours: Number(STREAM_ACCESS_HOURS),
+    youtubeLivestreamId: YOUTUBE_LIVESTREAM_ID,
+    loginCodeLength: Number(LOGIN_CODE_LENGTH),
+    baseUrl: BASE_URL,
+    stripePublishableKey: STRIPE_PUBLISHABLE_KEY,
+    minPaymentAmountCents,
+    suggestedAmountsCents: suggestedAmountsCents.length
+      ? suggestedAmountsCents
+      : [minPaymentAmountCents, minPaymentAmountCents * 2, minPaymentAmountCents * 5],
+    currency: stripePriceCurrency,
+  };
+}
+
+function isAllowedReturnUrl(returnUrl) {
+  if (!returnUrl) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(returnUrl);
+    const baseOrigin = new URL(BASE_URL).origin;
+    return parsed.origin === baseOrigin || embedAllowedOrigins.includes(parsed.origin);
+  } catch {
+    return false;
+  }
 }
 
 function getAuthUserFromRequest(req) {
   const cookies = parseCookieHeader(req.headers.cookie);
-  const authToken = cookies.auth_token;
+  const authToken = getBearerToken(req) || cookies.auth_token;
   const payload = verifySignedToken(authToken);
   if (!payload || !payload.sub || !payload.phone) {
     return null;
@@ -204,6 +287,19 @@ async function userHasActiveAccess(userId) {
   );
 
   return result.rowCount > 0;
+}
+
+async function getTotalContributedCents(userId) {
+  const result = await pool.query(
+    `
+      SELECT COALESCE(SUM(amount_cents), 0) AS total_contributed_cents
+      FROM twilio_purchases
+      WHERE user_id = $1
+    `,
+    [userId]
+  );
+
+  return Number(result.rows[0]?.total_contributed_cents || 0);
 }
 
 async function requirePaidAccess(req, res, next) {
@@ -263,6 +359,7 @@ async function initStripeOfferText() {
   const price = await stripe.prices.retrieve(STRIPE_PRICE_ID, {
     expand: ['product'],
   });
+  stripePriceCurrency = String(price.currency || 'usd');
 
   const productName =
     price.product && typeof price.product === 'object' && price.product.name
@@ -328,11 +425,15 @@ app.get('/auth/me', async (req, res) => {
       return res.json({ authenticated: false });
     }
 
-    const hasAccess = await userHasActiveAccess(user.id);
+    const [hasAccess, totalContributedCents] = await Promise.all([
+      userHasActiveAccess(user.id),
+      getTotalContributedCents(user.id),
+    ]);
     return res.json({
       authenticated: true,
       phone: user.phone,
       hasAccess,
+      totalContributedCents,
     });
   } catch (error) {
     console.error('Auth me error:', error.message);
@@ -340,11 +441,15 @@ app.get('/auth/me', async (req, res) => {
   }
 });
 
+app.get('/api/config', (_req, res) => {
+  return res.json(getClientConfig());
+});
+
 app.post('/auth/request-code', async (req, res) => {
   try {
-    const phone = normalizePhone(req.body?.phone);
+    const phone = normalizePhone(req.body?.phone, req.body?.countryCode);
     if (!phone) {
-      return res.status(400).json({ error: 'Valid E.164 phone is required (example: +14155550123)' });
+      return res.status(400).json({ error: 'Valid phone number is required' });
     }
 
     await twilioClient.verify.v2
@@ -360,7 +465,7 @@ app.post('/auth/request-code', async (req, res) => {
 
 app.post('/auth/verify-code', async (req, res) => {
   try {
-    const phone = normalizePhone(req.body?.phone);
+    const phone = normalizePhone(req.body?.phone, req.body?.countryCode);
     const code = String(req.body?.code || '').trim();
 
     if (!phone || !/^\d+$/.test(code) || code.length !== Number(LOGIN_CODE_LENGTH)) {
@@ -396,7 +501,7 @@ app.post('/auth/verify-code', async (req, res) => {
 
     setCookie(res, 'auth_token', authToken, Number(AUTH_SESSION_DAYS) * 24 * 60 * 60);
 
-    return res.json({ success: true });
+    return res.json({ success: true, authToken });
   } catch (error) {
     console.error('Twilio verify-code error:', error.message);
     return res.status(500).json({ error: 'Unable to verify login code' });
@@ -408,31 +513,130 @@ app.post('/auth/logout', (_req, res) => {
   return res.json({ success: true });
 });
 
-app.post('/create-checkout-session', requireAuth, async (req, res) => {
+app.post('/create-payment-intent', requireAuth, async (req, res) => {
   try {
+    const amountCents = Number(req.body?.amountCents);
+    const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
+    if (!Number.isInteger(amountCents) || amountCents < minPaymentAmountCents) {
+      return res.status(400).json({ error: `Amount must be at least ${minPaymentAmountCents} cents` });
+    }
+
     const customerId = await getOrCreateStripeCustomerId(req.user.id, req.user.phone);
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+    if (paymentIntentId) {
+      const existingIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const paidUserId = Number(existingIntent.metadata?.userId || 0);
+      const updatableStatuses = new Set([
+        'requires_payment_method',
+        'requires_confirmation',
+        'requires_action',
+      ]);
+
+      if (paidUserId !== req.user.id) {
+        return res.status(403).json({ error: 'Payment intent does not belong to this user' });
+      }
+
+      if (updatableStatuses.has(existingIntent.status)) {
+        const updatedIntent = await stripe.paymentIntents.update(paymentIntentId, {
+          amount: amountCents,
+        });
+
+        return res.json({
+          clientSecret: updatedIntent.client_secret,
+          paymentIntentId: updatedIntent.id,
+          reusedExisting: true,
+        });
+      }
+    }
+
+    const intent = await stripe.paymentIntents.create({
       customer: customerId,
-      line_items: [
-        {
-          price: STRIPE_PRICE_ID,
-          quantity: 1,
-        },
-      ],
+      amount: amountCents,
+      currency: stripePriceCurrency,
+      payment_method_types: ['card'],
       metadata: {
         userId: String(req.user.id),
         phone: req.user.phone,
       },
-      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/?canceled=1`,
     });
 
-    return res.json({ url: session.url });
+    return res.json({
+      clientSecret: intent.client_secret,
+      paymentIntentId: intent.id,
+      reusedExisting: false,
+    });
   } catch (error) {
-    console.error('Stripe session error:', error.message);
-    return res.status(500).json({ error: 'Unable to start checkout' });
+    console.error('Stripe payment intent error:', error.message);
+    return res.status(500).json({ error: 'Unable to start payment' });
+  }
+});
+
+app.post('/payments/finalize', requireAuth, async (req, res) => {
+  try {
+    const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'Missing paymentIntentId' });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ error: 'Payment has not completed successfully' });
+    }
+
+    const paidUserId = Number(paymentIntent.metadata?.userId || 0);
+    if (!paidUserId || paidUserId !== req.user.id) {
+      return res.status(403).json({ error: 'Payment does not belong to this user' });
+    }
+
+    const paidAt = new Date((paymentIntent.created || Math.floor(Date.now() / 1000)) * 1000);
+    const accessExpiresAt = new Date(Date.now() + Number(STREAM_ACCESS_HOURS) * 60 * 60 * 1000);
+
+    await pool.query(
+      `
+        INSERT INTO twilio_purchases (user_id, stripe_session_id, amount_cents, paid_at, access_expires_at)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (stripe_session_id) DO NOTHING
+      `,
+      [req.user.id, paymentIntent.id, Number(paymentIntent.amount_received || paymentIntent.amount || 0), paidAt, accessExpiresAt]
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Payment finalization error:', error.message);
+    return res.status(500).json({ error: 'Unable to finalize payment' });
+  }
+});
+
+app.post('/payments/cancel', requireAuth, async (req, res) => {
+  try {
+    const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'Missing paymentIntentId' });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paidUserId = Number(paymentIntent.metadata?.userId || 0);
+    if (!paidUserId || paidUserId !== req.user.id) {
+      return res.status(403).json({ error: 'Payment intent does not belong to this user' });
+    }
+
+    const cancellableStatuses = new Set([
+      'requires_payment_method',
+      'requires_confirmation',
+      'requires_action',
+      'requires_capture',
+      'processing',
+    ]);
+
+    if (!cancellableStatuses.has(paymentIntent.status)) {
+      return res.json({ success: true, cancelled: false, status: paymentIntent.status });
+    }
+
+    await stripe.paymentIntents.cancel(paymentIntentId);
+    return res.json({ success: true, cancelled: true });
+  } catch (error) {
+    console.error('Payment cancel error:', error.message);
+    return res.status(500).json({ error: 'Unable to cancel payment' });
   }
 });
 
@@ -443,19 +647,20 @@ app.get('/success', async (req, res) => {
   }
 
   const { session_id: sessionId } = req.query;
+  const returnTo = isAllowedReturnUrl(req.query.return_to) ? req.query.return_to : null;
   if (!sessionId) {
-    return res.redirect('/');
+    return res.redirect(returnTo || '/');
   }
 
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     if (session.payment_status !== 'paid') {
-      return res.redirect('/');
+      return res.redirect(returnTo || '/');
     }
 
     const paidUserId = Number(session.metadata?.userId || 0);
     if (!paidUserId || paidUserId !== user.id) {
-      return res.redirect('/');
+      return res.redirect(returnTo || '/');
     }
 
     const paidAt = new Date((session.created || Math.floor(Date.now() / 1000)) * 1000);
@@ -470,25 +675,20 @@ app.get('/success', async (req, res) => {
       [user.id, session.id, Number(session.amount_total || 0), paidAt, accessExpiresAt]
     );
 
-    return res.redirect('/livestream');
+    return res.redirect(returnTo || '/livestream');
   } catch (error) {
     console.error('Session verification error:', error.message);
-    return res.redirect('/');
+    return res.redirect(returnTo || '/');
   }
 });
 
-app.get('/livestream', requireAuthPage, requirePaidAccess, (_req, res) => {
+app.get('/livestream', requireAuthPage, (_req, res) => {
   return res.sendFile(path.join(__dirname, 'private', 'livestream.html'));
 });
 
 app.get('/config.js', (_req, res) => {
   res.type('application/javascript');
-  res.send(`window.APP_CONFIG = ${JSON.stringify({
-    offerText: stripeOfferText,
-    streamAccessHours: Number(STREAM_ACCESS_HOURS),
-    youtubeLivestreamId: YOUTUBE_LIVESTREAM_ID,
-    loginCodeLength: Number(LOGIN_CODE_LENGTH),
-  })};`);
+  res.send(`window.APP_CONFIG = ${JSON.stringify(getClientConfig())};`);
 });
 
 initDb()

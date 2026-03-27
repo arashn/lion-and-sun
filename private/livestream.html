@@ -4,28 +4,56 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Livestream</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg-1: #fff9f0;
+        --bg-2: #e9f3ff;
+        --ink: #13233a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, var(--bg-1), transparent 36%),
+          radial-gradient(circle at bottom right, var(--bg-2), transparent 38%),
+          linear-gradient(180deg, #f6f8fc 0%, #edf3fb 100%);
+        font-family: Georgia, "Times New Roman", serif;
+      }
+
+      main {
+        width: min(1120px, 92vw);
+        margin: 0 auto;
+        padding: 3rem 0 4rem;
+      }
+
+      #livestream-widget {
+        min-height: 600px;
+      }
+
+      @media (max-width: 720px) {
+        main {
+          padding-top: 2rem;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main class="container">
-      <h1>Livestream</h1>
-      <p>You have active access. Enjoy the show.</p>
-      <div class="video-wrapper">
-        <iframe
-          id="stream-frame"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowfullscreen
-          referrerpolicy="strict-origin-when-cross-origin"
-          title="YouTube livestream"
-        ></iframe>
-      </div>
+    <main>
+      <div
+        id="livestream-widget"
+        data-lion-sun-widget
+        data-title="Livestream"
+        data-return-url="/livestream"
+      ></div>
     </main>
 
-    <script src="/config.js"></script>
-    <script>
-      const streamFrame = document.getElementById('stream-frame');
-      const streamId = window.APP_CONFIG.youtubeLivestreamId;
-      streamFrame.src = `https://www.youtube.com/embed/${streamId}`;
-    </script>
+    <script src="/embed-widget.js"></script>
   </body>
 </html>
