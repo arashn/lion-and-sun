@@ -294,13 +294,13 @@
       this.rootEl = rootEl;
       this.options = options || {};
       this.apiBase = (this.options.apiBase || defaultBaseUrl).replace(/\/$/, '');
-      this.returnUrl = this.options.returnUrl || window.location.href;
+      this.returnUrl = this.options.returnUrl || new URL('/livestream', this.apiBase).toString();
       this.storageKey = `lion-and-sun-auth-token:${this.apiBase}`;
       this.authToken = readStorage(this.storageKey);
       this.root = rootEl;
       this.state = {
         config: null,
-        auth: { authenticated: false, hasAccess: false },
+        auth: { authenticated: false, hasAccess: false, totalContributedCents: 0 },
         selectedAmountCents: null,
         paymentOverlayOpen: false,
         phoneCountryCode: 'US',
@@ -356,14 +356,14 @@
                 <div class="payment-element" data-payment-element></div>
               </div>
               <div class="actions">
-                <button class="primary" type="button" data-pay>Pay With Card</button>
+                <button class="primary" type="button" data-pay>Contribute</button>
               </div>
             </section>
             <section class="card hidden" data-video-card>
               <div class="video-toolbar">
                 <p class="viewer-meta" data-viewer-meta></p>
                 <div class="actions">
-                  <button class="secondary hidden" type="button" data-donate-more>Donate More</button>
+                  <button class="secondary hidden" type="button" data-donate-more>Contribute</button>
                   <button class="ghost" type="button" data-logout>Log Out</button>
                 </div>
               </div>
@@ -455,7 +455,7 @@
       this.state.config = config;
       this.state.auth = auth;
       this.state.selectedAmountCents = config.minPaymentAmountCents;
-      this.state.paymentOverlayOpen = !auth.hasAccess;
+      this.state.paymentOverlayOpen = auth.authenticated && !this.hasContributed(auth);
       this.state.phoneCountryCode = phoneCountryCode;
       this.stripe = window.Stripe(config.stripePublishableKey);
       this.render();
@@ -533,6 +533,10 @@
 
       renderCountdown();
       this.countdownInterval = window.setInterval(renderCountdown, 1000);
+    }
+
+    hasContributed(auth = this.state.auth) {
+      return Number(auth && auth.totalContributedCents) > 0;
     }
 
     formatCurrency(amountCents) {
@@ -636,12 +640,7 @@
     }
 
     async handlePaymentSecondaryAction() {
-      if (this.state.auth.hasAccess) {
-        await this.closePaymentSection();
-        return;
-      }
-
-      await this.logout();
+      await this.closePaymentSection();
     }
 
     async applyCustomAmount() {
@@ -752,6 +751,14 @@
       return parsed.formatNational();
     }
 
+    isOnReturnUrl() {
+      try {
+        return new URL(window.location.href).href === new URL(this.returnUrl, window.location.href).href;
+      } catch {
+        return window.location.href === this.returnUrl;
+      }
+    }
+
     render() {
       const config = this.state.config;
       const auth = this.state.auth;
@@ -760,31 +767,36 @@
       this.phoneEl.placeholder = this.state.phoneCountryCode === 'US' ? '(415) 555-0123' : 'Phone number';
       this.renderAmountOptions();
       this.loginCardEl.classList.toggle('hidden', auth.authenticated);
-      this.payCardEl.classList.toggle('hidden', !auth.authenticated || (auth.hasAccess && !this.state.paymentOverlayOpen));
-      this.videoCardEl.classList.toggle('hidden', !auth.hasAccess);
+      this.payCardEl.classList.toggle('hidden', !auth.authenticated || !this.state.paymentOverlayOpen);
+      this.videoCardEl.classList.toggle('hidden', !auth.authenticated);
       this.payMetaEl.textContent = '';
       this.videoMetaEl.textContent = '';
       this.paymentShellEl.classList.toggle('hidden', !auth.authenticated);
-      this.donateMoreEl.classList.toggle('hidden', !auth.hasAccess);
-      this.closePaymentEl.textContent = auth.hasAccess ? 'Close' : 'Log Out';
+      this.donateMoreEl.classList.toggle('hidden', !auth.authenticated || this.state.paymentOverlayOpen);
+      this.closePaymentEl.textContent = 'Close';
 
       if (auth.authenticated) {
         const displayPhone = this.formatPhoneForDisplay(auth.phone);
+        const hasContributed = this.hasContributed(auth);
         this.viewerMetaEl.textContent = `Logged in as ${displayPhone}`;
-        if (auth.hasAccess) {
-          this.payMetaEl.textContent = `You already have access. You can contribute ${this.formatCurrency(this.state.selectedAmountCents)} or choose another amount.`;
-          this.payEl.textContent = 'Pay More With Card';
-          this.videoMetaEl.textContent = `${displayPhone} has active access.`;
+        if (hasContributed) {
+          this.payMetaEl.textContent = `You've already contributed ${this.formatCurrency(auth.totalContributedCents)}. You can contribute more if you'd like.`;
+          this.payEl.textContent = `Contribute ${this.formatCurrency(this.state.selectedAmountCents)} more`;
+          this.donateMoreEl.textContent = 'Contribute More';
+          this.videoMetaEl.textContent = `${displayPhone} is watching live and has contributed ${this.formatCurrency(auth.totalContributedCents)}.`;
         } else {
-          this.payMetaEl.textContent = `Complete payment of ${this.formatCurrency(this.state.selectedAmountCents)} or more to unlock the livestream.`;
-          this.payEl.textContent = `Pay ${this.formatCurrency(this.state.selectedAmountCents)}`;
+          this.payMetaEl.textContent = `Enjoy the livestream for free. If you'd like to support it, contribute ${this.formatCurrency(this.state.selectedAmountCents)} or choose another amount.`;
+          this.payEl.textContent = `Contribute ${this.formatCurrency(this.state.selectedAmountCents)}`;
+          this.donateMoreEl.textContent = 'Contribute';
+          this.videoMetaEl.textContent = `${displayPhone} is watching live.`;
         }
       } else {
         this.viewerMetaEl.textContent = '';
-        this.payEl.textContent = `Pay ${this.formatCurrency(this.state.selectedAmountCents)}`;
+        this.payEl.textContent = `Contribute ${this.formatCurrency(this.state.selectedAmountCents)}`;
+        this.donateMoreEl.textContent = 'Contribute';
       }
 
-      if (auth.hasAccess) {
+      if (auth.authenticated) {
         this.videoFrameEl.src = `https://www.youtube.com/embed/${config.youtubeLivestreamId}`;
       } else {
         this.videoFrameEl.removeAttribute('src');
@@ -836,10 +848,17 @@
         if (verifyResult.authToken) {
           this.setAuthToken(verifyResult.authToken);
         }
+        if (!this.isOnReturnUrl()) {
+          this.setStatus('Logged in. Redirecting to the livestream...');
+          window.location.assign(this.returnUrl);
+          return;
+        }
         this.state.auth = await this.fetchJson('/auth/me');
-        this.state.paymentOverlayOpen = !this.state.auth.hasAccess;
+        this.state.paymentOverlayOpen = !this.hasContributed(this.state.auth);
         this.render();
-        await this.ensurePaymentElement(true);
+        if (this.state.paymentOverlayOpen) {
+          await this.ensurePaymentElement(true);
+        }
         this.setStatus('Logged in.');
       } catch (error) {
         this.setStatus(error.message);
@@ -889,7 +908,7 @@
         this.state.paymentOverlayOpen = false;
         this.resetPaymentElement();
         this.render();
-        this.setStatus('Payment successful. Livestream access is active.');
+        this.setStatus('Contribution successful.');
       } catch (error) {
         this.setStatus(error.message);
       } finally {
@@ -902,7 +921,7 @@
       try {
         await this.fetchJson('/auth/logout', { method: 'POST' });
         this.clearAuthToken();
-        this.state.auth = { authenticated: false, hasAccess: false };
+        this.state.auth = { authenticated: false, hasAccess: false, totalContributedCents: 0 };
         this.state.paymentOverlayOpen = false;
         this.codeEl.value = '';
         this.codeBlockEl.classList.add('hidden');

@@ -289,6 +289,19 @@ async function userHasActiveAccess(userId) {
   return result.rowCount > 0;
 }
 
+async function getTotalContributedCents(userId) {
+  const result = await pool.query(
+    `
+      SELECT COALESCE(SUM(amount_cents), 0) AS total_contributed_cents
+      FROM twilio_purchases
+      WHERE user_id = $1
+    `,
+    [userId]
+  );
+
+  return Number(result.rows[0]?.total_contributed_cents || 0);
+}
+
 async function requirePaidAccess(req, res, next) {
   try {
     const hasAccess = await userHasActiveAccess(req.user.id);
@@ -412,11 +425,15 @@ app.get('/auth/me', async (req, res) => {
       return res.json({ authenticated: false });
     }
 
-    const hasAccess = await userHasActiveAccess(user.id);
+    const [hasAccess, totalContributedCents] = await Promise.all([
+      userHasActiveAccess(user.id),
+      getTotalContributedCents(user.id),
+    ]);
     return res.json({
       authenticated: true,
       phone: user.phone,
       hasAccess,
+      totalContributedCents,
     });
   } catch (error) {
     console.error('Auth me error:', error.message);
@@ -665,7 +682,7 @@ app.get('/success', async (req, res) => {
   }
 });
 
-app.get('/livestream', requireAuthPage, requirePaidAccess, (_req, res) => {
+app.get('/livestream', requireAuthPage, (_req, res) => {
   return res.sendFile(path.join(__dirname, 'private', 'livestream.html'));
 });
 
