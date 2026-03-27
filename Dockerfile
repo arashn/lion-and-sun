@@ -5,7 +5,7 @@ FROM node:24-slim
 WORKDIR /app
 
 # Link the published GHCR package back to this repository so Actions can inherit package access.
-LABEL org.opencontainers.image.source="https://github.com/arashnabili/lion-and-sun"
+LABEL org.opencontainers.image.source="https://github.com/arashn/lion-and-sun"
 
 # Copy package.json and package-lock.json into the container
 COPY package*.json ./
